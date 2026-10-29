@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Local game saves
+XiangQi/saves/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Local archives
+*.zip
+
+# Local WeChat upload package
+KuoBianZhanZheng/Package/KuoBianZhanZheng-WeChat-Game/

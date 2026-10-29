@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "homepage",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/static-server.js", "personal-homepage", "8123"],
+      "port": 8123
+    },
+    {
+      "name": "commander-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["KuoBianZhanZheng/dev/serve.js", "8124"],
+      "port": 8124
+    }
+  ]
+}
