@@ -11,7 +11,9 @@
 - 3 个同等级我方单位自动合体，兵力相加，可连锁升级；敌方不会合体。
 - 击败敌方编制获得金币，可购买限时机枪、手雷、迫击炮，或兑换军功。
 - 每关攻入上半屏随机生成的敌军基地，清空全部守军过关；我方兵力归零则失败。
+- 失败结算会列出本关损失兵力、击杀数、获得金币与最高编制，并用一句话给出改进建议（兵力差过大、未使用武器、该合体等）。
 - 共 50 关，每关开场自动保存快照，战败后可回到本关初始状态重试。
+- 通关全部 50 关后，新一轮「新的开始」会继承通关时的兵力与金币，直接从带编队的第 1 关重新开始；再次通关后记录会更新为最新数据。
 
 ## 特色
 
@@ -49,15 +51,21 @@
 
 ## 运行
 
-- 浏览器预览：`node dev/serve.js 8124`，打开 <http://localhost:8124/dev/index.html>。
+- 在线网站：<https://ycn0312y.github.io/AI-Project/>，浏览器直接打开即可游玩，无需登录或下载。
+- 本地预览生产版：先运行 `node tools/build-web.cjs` 生成 `site/`，再运行 `node dev/serve.js 8124`，打开 <http://localhost:8124/site/index.html>。
+- 开发预览：`node dev/serve.js 8124`，打开 <http://localhost:8124/dev/index.html>。
 - 微信开发者工具：导入 `dist/CommanderSim`，项目类型选「小游戏」，填入小游戏 AppID 后编译。
 - 上传/发布需要真实的小游戏 AppID；本地预览可用测试号。
+- 网站由 GitHub Actions 在推送 `main` 后自动构建并部署到 GitHub Pages；网站构建会移除测试关卡入口与调试对象。
 
 ## 存档
 
 - `commanderSim.save.v1`：最高分、最高关卡、累计击杀、音乐/音效开关。
 - `commanderSim.campaign.v1`：当前战役进度。
 - `commanderSim.checkpoint.v1`：本关开场快照，战败重试时恢复。
+- `commanderSim.clearance.v1`：通关快照（兵力 + 金币），通关后的新一轮继承使用。
+
+网站版通过浏览器 `localStorage` 保存以上数据，清理浏览器站点数据或更换浏览器会丢失进度；微信小游戏版仍使用微信本地存储。
 
 ## 目录
 
@@ -66,8 +74,10 @@ KuoBianZhanZheng/
 ├─ game.js / game.json / project.config.json
 ├─ js/            # 游戏代码
 ├─ assets/        # 图片与音频
+├─ web/           # 网站外壳、生产版 wx 适配层与图标清单
+├─ site/          # 构建产物（不提交）
 ├─ dev/           # 浏览器预览
-├─ tools/         # BGM/SFX 生成工具
+├─ tools/         # 构建、BGM/SFX 与发布工具
 └─ dist/          # 微信小游戏打包目录与 zip
 ```
 

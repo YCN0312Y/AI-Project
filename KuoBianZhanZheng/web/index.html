@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#0a1118" />
+  <meta
+    name="description"
+    content="《扩编战争》是一款竖屏单机自动战斗小游戏：拖动部队、招募新兵、三合一扩编，从班一路打到方面军，攻克 50 个敌军基地。打开网页即可游玩，无需下载或登录。"
+  />
+  <meta property="og:title" content="扩编战争 · 在线小游戏" />
+  <meta
+    property="og:description"
+    content="拖动部队自动战斗，三合一扩编，从班打到方面军。打开网页即可游玩。"
+  />
+  <meta property="og:type" content="website" />
+  <title>扩编战争 · 在线小游戏</title>
+  <link rel="icon" href="assets/images/emblem.png" />
+  <link rel="apple-touch-icon" href="assets/images/emblem.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070b10;
+      --panel: rgba(14, 24, 36, 0.82);
+      --line: rgba(120, 170, 220, 0.18);
+      --text: #f2f7ff;
+      --muted: #8fa6bd;
+      --blue: #58a6ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+        "Microsoft YaHei", sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 12%, rgba(53, 113, 180, 0.2), transparent 38%),
+        radial-gradient(circle at 14% 86%, rgba(123, 79, 30, 0.13), transparent 34%),
+        radial-gradient(circle at 88% 74%, rgba(23, 82, 104, 0.14), transparent 34%),
+        linear-gradient(180deg, #0b141d 0%, #070b10 58%, #05080c 100%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.22;
+      background-image:
+        linear-gradient(rgba(120, 170, 220, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(120, 170, 220, 0.04) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 74%);
+      -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 74%);
+    }
+
+    #boot {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      background:
+        radial-gradient(circle at 50% 34%, rgba(48, 109, 178, 0.24), transparent 34%),
+        linear-gradient(180deg, #0a121b 0%, #060a0f 100%);
+      transition: opacity 0.45s ease, visibility 0.45s ease;
+    }
+
+    #boot.done {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .boot-inner {
+      width: min(320px, 100%);
+      text-align: center;
+    }
+
+    .boot-mark {
+      position: relative;
+      width: 96px;
+      height: 96px;
+      margin: 0 auto 24px;
+      border-radius: 50%;
+      padding: 3px;
+      background: linear-gradient(145deg, rgba(121, 189, 255, 0.75), rgba(28, 61, 93, 0.2));
+      box-shadow: 0 0 52px rgba(78, 160, 255, 0.28);
+      animation: boot-float 2.8s ease-in-out infinite;
+    }
+
+    .boot-mark::after {
+      content: "";
+      position: absolute;
+      inset: -12px;
+      border: 1px solid rgba(104, 176, 255, 0.16);
+      border-radius: 50%;
+      animation: boot-ring 2.8s ease-out infinite;
+    }
+
+    .boot-mark img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .boot-title {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.15;
+      letter-spacing: 0.14em;
+      font-weight: 800;
+      text-indent: 0.14em;
+      text-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    }
+
+    .boot-sub {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+    }
+
+    .boot-bar {
+      position: relative;
+      width: 152px;
+      height: 3px;
+      margin: 30px auto 14px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(120, 170, 220, 0.15);
+    }
+
+    .boot-bar span {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 42%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, transparent, var(--blue), #b8ddff, transparent);
+      animation: boot-loading 1.2s ease-in-out infinite;
+    }
+
+    .boot-hint {
+      color: rgba(164, 188, 211, 0.86);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+    }
+
+    #boot.failed .boot-bar span {
+      width: 100%;
+      animation: none;
+      background: #ff7070;
+    }
+
+    #boot.failed .boot-hint {
+      color: #ff9a9a;
+    }
+
+    @keyframes boot-loading {
+      0% {
+        left: -45%;
+      }
+      100% {
+        left: 105%;
+      }
+    }
+
+    @keyframes boot-float {
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-7px);
+      }
+    }
+
+    @keyframes boot-ring {
+      0% {
+        transform: scale(0.86);
+        opacity: 0;
+      }
+      28% {
+        opacity: 0.75;
+      }
+      100% {
+        transform: scale(1.22);
+        opacity: 0;
+      }
+    }
+
+    #rotate {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(5, 9, 14, 0.94);
+      text-align: center;
+    }
+
+    .rotate-inner {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.9;
+      letter-spacing: 0.08em;
+    }
+
+    .rotate-icon {
+      width: 42px;
+      height: 68px;
+      margin: 0 auto 18px;
+      border: 2px solid rgba(130, 190, 255, 0.7);
+      border-radius: 9px;
+      transform: rotate(-90deg);
+      animation: rotate-hint 1.8s ease-in-out infinite;
+    }
+
+    @keyframes rotate-hint {
+      0%,
+      100% {
+        transform: rotate(-90deg);
+      }
+      55% {
+        transform: rotate(0deg);
+      }
+    }
+
+    @media (orientation: landscape) and (max-height: 520px) and (pointer: coarse) {
+      #rotate {
+        display: flex;
+      }
+    }
+
+    noscript {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      background: #070b10;
+      color: var(--text);
+      text-align: center;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+  <div id="boot" role="status" aria-live="polite">
+    <div class="boot-inner">
+      <div class="boot-mark">
+        <img src="assets/images/emblem.png" alt="" />
+      </div>
+      <h1 class="boot-title">扩编战争</h1>
+      <div class="boot-sub">拖动部队 · 自动战斗 · 三合一扩编</div>
+      <div class="boot-bar"><span></span></div>
+      <div class="boot-hint">正在部署战场…</div>
+    </div>
+  </div>
+
+  <div id="rotate" aria-hidden="true">
+    <div class="rotate-inner">
+      <div class="rotate-icon"></div>
+      请旋转至竖屏<br />
+      获得完整战场视野
+    </div>
+  </div>
+
+  <noscript>需要启用 JavaScript 才能运行《扩编战争》。</noscript>
+
+  <script src="wx-shim.js"></script>
+  <script>
+    ;(function () {
+      var boot = document.getElementById('boot')
+      var hint = boot ? boot.querySelector('.boot-hint') : null
+
+      function showError(event) {
+        if (!boot || boot.classList.contains('done')) return
+        boot.classList.add('failed')
+        if (hint) hint.textContent = '加载失败，请刷新页面重试'
+        console.error('[扩编战争] 启动失败', event && (event.reason || event.error || event.message))
+      }
+
+      window.addEventListener('error', showError)
+      window.addEventListener('unhandledrejection', showError)
+    })()
+  </script>
+  <script type="module">
+    import './game.js'
+
+    var boot = document.getElementById('boot')
+    requestAnimationFrame(function () {
+      if (!boot) return
+      boot.classList.add('done')
+      setTimeout(function () {
+        if (boot && boot.parentNode) boot.parentNode.removeChild(boot)
+      }, 500)
+    })
+  </script>
+</body>
+</html>

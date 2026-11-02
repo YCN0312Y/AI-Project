@@ -12,6 +12,7 @@ import {
   fillCircle,
   pruneDead,
   formatNumber,
+  formatCompact,
   segmentHitsCircle,
   segmentHitsRect,
 } from './utils'
@@ -24,6 +25,8 @@ import {
   loadCheckpoint,
   writeCheckpoint,
   clearCheckpoint,
+  loadClearance,
+  writeClearance,
 } from './storage'
 import {
   createBackground,
@@ -57,6 +60,9 @@ export class Game {
     this.save = loadSave()
     this.resume = loadCampaign()
     this.checkpoint = loadCheckpoint()
+    this.clearance = loadClearance()   // 通关快照：新一轮从第 1 关继承兵力与金币
+    this.ngPlus = false
+    this.ngPlusArmy = null
     this.audio = new Bgm(this.save.musicOn !== false)
     this.sfx = new Sfx(this.save.sfxOn !== false)
     this.sfxUnlocked = false
@@ -108,6 +114,15 @@ export class Game {
     this.spawnInterval = CFG.wave.spawnBase
     this.score = 0
     this.kills = 0
+    this.maxTier = 1
+    this.levelKills = 0
+    this.levelTroopsLost = 0
+    this.levelCoinsEarned = 0
+    this.levelWeaponUses = 0
+    this.levelMerges = 0
+    this.levelRecruits = 0
+    this.levelStartTroops = 0
+    this.failureNote = null
     this.merit = CFG.merit.start
     this.meritTimer = CFG.merit.passiveInterval
     this.meritProgress = 0
@@ -484,11 +499,17 @@ export class Game {
     this.crates.length = 0
     this.grenades.length = 0
     this.fx.clear()
+    this.maxTier = 1
 
     this.freeSlots = this.formation.map((_, i) => i).reverse()
     this.levelMode = true
     this.level = options.level === undefined ? 1 : options.level
     this.victory = false
+    // 通关后新一轮继承：仅在使用默认金币且从第 1 关开始时生效
+    this.inheritNgPlus(
+      options.coins === undefined,
+      options.level === undefined || options.level === 1
+    )
     this.mapDecor = null
     this.levelReserve = 0
     this.levelEnemyTotal = 0
@@ -502,8 +523,15 @@ export class Game {
     this.flow = null
     this.flowTimer = 0
 
-    // 初始免费获得一个班，从入口进入基地
-    this.addUnit(1, true)
+    if (this.ngPlus && this.restoreNgPlus()) {
+      // 继承的通关编队整队进场（替代初始免费班）
+      if (this.banner) this.banner.sub += ' · 已继承通关编队'
+    } else {
+      this.ngPlus = false
+      // 初始免费获得一个班，从入口进入基地
+      this.addUnit(1, true)
+    }
+    this.resetLevelStats()
     this.peakTroops = this.totalTroops()
     this.saveLevelCheckpoint()
     this.saveCampaign()
@@ -580,6 +608,24 @@ export class Game {
     )
   }
 
+  // 每关开始时清零本关统计，失败结算用来给出可执行的诊断
+  resetLevelStats() {
+    this.levelKills = 0
+    this.levelTroopsLost = 0
+    this.levelCoinsEarned = 0
+    this.levelWeaponUses = 0
+    this.levelMerges = 0
+    this.levelRecruits = 0
+    this.levelStartTroops = this.totalTroops()
+    this.failureNote = null
+  }
+
+  // 记录本局达到过的最高编制（失败时即使高级单位已阵亡也保留）
+  noteTier(tier) {
+    const t = clamp(Number(tier) || 1, 1, TROOP_TIERS.length)
+    this.maxTier = Math.max(this.maxTier || 1, t)
+  }
+
   // 按快照重建我方编制（等级、当前兵力、编制上限、阵位）
   restoreArmyFrom(army) {
     this.units.length = 0
@@ -605,6 +651,7 @@ export class Game {
       unit.lastTarget = null
       unit.hidden = false
       this.units.push(unit)
+      this.noteTier(spec.tier)
       used.add(slot)
     }
 
@@ -655,6 +702,7 @@ export class Game {
     this.score = c.score
     this.kills = c.kills
     this.peakTroops = c.peakTroops
+    this.maxTier = 1
 
     this.units.length = 0
     this.enemies.length = 0
@@ -673,6 +721,7 @@ export class Game {
     }
 
     this.placeUnitsAtEntrance()
+    this.resetLevelStats()
     this.peakTroops = Math.max(this.peakTroops, this.totalTroops())
     // 若是旧存档没有本关开场快照，就用当前恢复状态补一份；
     // 已有同关快照时保留，失败重试仍回到最初进入本关的状态。
@@ -738,6 +787,7 @@ export class Game {
     this.score = cp.score
     this.kills = cp.kills
     this.peakTroops = cp.peakTroops
+    this.maxTier = 1
 
     this.enemies.length = 0
     this.arrows.length = 0
@@ -755,6 +805,7 @@ export class Game {
     }
 
     this.placeUnitsAtEntrance()
+    this.resetLevelStats()
     this.peakTroops = Math.max(cp.peakTroops || 0, this.totalTroops())
     this.audio.playBattle()
     this.state = 'playing'
@@ -1373,6 +1424,7 @@ export class Game {
     unit.x = clamp(unit.x, 16, this.W - 16)
     unit.y = clamp(unit.y, this.playTop + 8, this.playBottom - 12)
     this.units.push(unit)
+    this.noteTier(tierLevel)
 
     this.peakTroops = Math.max(this.peakTroops, this.totalTroops())
 
@@ -1409,6 +1461,7 @@ export class Game {
 
     this.merit -= info.cost
     if (this.addUnit(info.level, false)) {
+      this.levelRecruits += 1
       this.cardFlash[index] = 0.45
       this.tryMergePlayer()
     } else {
@@ -1487,6 +1540,8 @@ export class Game {
     merged.x = clamp(merged.x, 16, this.W - 16)
     merged.y = clamp(merged.y, this.playTop + 8, this.playBottom - 12)
     this.units.push(merged)
+    this.noteTier(tier + 1)
+    this.levelMerges += 1
 
     this.fx.ring(merged.x, merged.y, merged.tierColor, 8, 52, 0.5)
     this.fx.spark(merged.x, merged.y, merged.tierColor, 16, 170)
@@ -2744,6 +2799,7 @@ export class Game {
     }
 
     this.addCoins(-cfg.cost)
+    this.levelWeaponUses += 1
     this.weaponMode = mode
     this.weaponUnit = unit
     this.weaponTimer = CFG.weapons.duration
@@ -2763,6 +2819,7 @@ export class Game {
   // 金币支持 0.01 精度，统一在这里取整，避免浮点误差
   addCoins(amount) {
     const v = Number(amount) || 0
+    if (v > 0) this.levelCoinsEarned = (this.levelCoinsEarned || 0) + v
     this.coins = Math.max(0, Math.round((this.coins + v) * 100) / 100)
   }
 
@@ -2886,6 +2943,7 @@ export class Game {
       enemy.dead = true
       this.assignEnemyWeapons()
       this.kills += 1
+      this.levelKills += 1
       this.score += enemy.score
       // 击败一个编制单位时按等级发放金币（班 0.1 …… 军 2）
       const reward = Number(CFG.coins.rewards[enemy.tier - 1]) || 0
@@ -2919,6 +2977,7 @@ export class Game {
 
     const before = unit.troops
     const dmg = Math.max(1, Math.round(casualties))
+    this.levelTroopsLost += Math.min(dmg, before)
     unit.troops -= dmg
     unit.hitFlash = 1
     this.shake = Math.min(9, this.shake + 0.7)
@@ -2957,6 +3016,52 @@ export class Game {
 
   levelVictory() {
     this.finishRun(true)
+  }
+
+  saveClearance() {
+    const army = this.armySnapshot()
+    if (army.length === 0) return
+    this.clearance = {
+      level: LEVELS.length,
+      army,
+      merit: this.merit,
+      meritProgress: this.meritProgress || 0,
+      coins: this.coins,
+      score: this.score,
+      kills: this.kills,
+      peakTroops: this.peakTroops,
+    }
+    writeClearance(this.clearance)
+  }
+
+  // 已通关后从第 1 关重新开始：决定是否继承通关时的兵力与金币
+  // freshCoins / freshLevel：本轮是否使用默认初始金币、默认从第 1 关开始。
+  inheritNgPlus(freshCoins, freshLevel) {
+    this.ngPlus = false
+    this.ngPlusArmy = null
+    if (!freshCoins || !freshLevel) return
+    const c = this.clearance
+    if (!c || !Array.isArray(c.army) || c.army.length === 0) return
+    if (!(c.coins >= 0)) return
+    this.ngPlus = true
+    this.ngPlusArmy = c.army
+    this.coins = c.coins
+  }
+
+  // 把继承的通关编队铺进阵型，并放到入口位置
+  restoreNgPlus() {
+    const army = this.ngPlusArmy
+    this.ngPlusArmy = null
+    if (!this.ngPlus || !Array.isArray(army) || army.length === 0) {
+      this.ngPlus = false
+      return false
+    }
+    if (!this.restoreArmyFrom(army)) {
+      this.ngPlus = false
+      return false
+    }
+    this.placeUnitsAtEntrance()
+    return true
   }
 
   placeUnitsAtEntrance() {
@@ -3000,6 +3105,7 @@ export class Game {
 
     this.setupLevel(this.level)
     this.placeUnitsAtEntrance()
+    this.resetLevelStats()
     this.flow = null
     this.flowTimer = 0
     this.peakTroops = Math.max(this.peakTroops, this.totalTroops())
@@ -3016,6 +3122,7 @@ export class Game {
     this.drag = null
     this.panelMsg = null
     this.peakTroops = Math.max(this.peakTroops, this.totalTroops())
+    this.failureNote = victory ? null : this.buildFailureDiagnosis()
 
     const prevBest = this.save.bestScore
     const prevBestTroops = this.save.bestTroops
@@ -3028,6 +3135,11 @@ export class Game {
     this.save.totalKills += this.kills
     this.save.plays += 1
     writeSave(this.save)
+
+    // 通过全部关卡时记录通关快照，新一轮从第 1 关开始时继承兵力与金币
+    if (victory && this.levelMode && this.level >= LEVELS.length) {
+      this.saveClearance()
+    }
 
     this.vibrate(true)
     if (victory) {
@@ -3043,6 +3155,59 @@ export class Game {
         'rgba(255, 120, 120, 0.9)', 10, 120, 0.7
       )
       this.fx.spark(this.target.x, this.target.y, '#ff8a8a', 24, 220)
+    }
+  }
+
+  // 失败结算的一句话诊断：优先说出最值得改的一件事
+  buildFailureDiagnosis() {
+    const enemy = Math.max(0, this.levelEnemyTroops || 0)
+    const own = Math.max(0, this.levelStartTroops || 0)
+    const ratio = own > 0 ? enemy / own : 0
+    const loss = Math.max(0, this.levelTroopsLost || 0)
+    const kills = Math.max(0, this.levelKills || 0)
+    const noWeapon = (this.levelWeaponUses || 0) === 0
+    const noMerge = (this.levelMerges || 0) === 0
+    const recruited = (this.levelRecruits || 0) >= 3
+    const canBuyWeapon = this.coins >= CFG.weapons.mg.cost
+
+    if (ratio >= 1.8) {
+      return {
+        text: `敌军总兵力约为我方的 ${ratio.toFixed(1)} 倍`,
+        hint: noWeapon && canBuyWeapon
+          ? '建议先招兵/合体，并用机枪或手雷降低战损'
+          : '建议先招兵/合体，或利用掩体分批清剿',
+        color: '#ffb347',
+      }
+    }
+
+    if (noWeapon && canBuyWeapon) {
+      return {
+        text: '本关没有使用武器',
+        hint: '金币足够时，机枪/手雷能降低战损',
+        color: COLORS.gold,
+      }
+    }
+
+    if (noMerge && recruited) {
+      return {
+        text: '本关招募了多个单位，但没有合体',
+        hint: '3 个同级单位可合体，集中兵力更耐打',
+        color: '#a8d8ff',
+      }
+    }
+
+    if (loss > 0) {
+      return {
+        text: `本关损失 ${formatCompact(loss)} 兵力`,
+        hint: '试试优先集火高级编制，并保持距离',
+        color: '#ff9f7a',
+      }
+    }
+
+    return {
+      text: `本关击杀 ${formatNumber(kills)} 部敌军，但未能突破`,
+      hint: '调整站位，优先清掉高等级敌军',
+      color: '#8fa6bd',
     }
   }
 
@@ -3411,17 +3576,37 @@ export class Game {
   }
 
   gameoverLayout() {
+    // 失败时多出一块“本关战况 + 诊断”，面板相应加高；胜利保持原布局
+    const failed = !this.victory
     const pw = Math.min(this.W - 44, 340)
-    const ph = 340
+    const ph = failed ? 384 : 340
     const px = (this.W - pw) / 2
-    const py = Math.max(this.safeTop + 20, (this.H - ph) / 2)
+    const py = Math.max(this.safeTop + 16, (this.H - ph) / 2)
     const bw = pw - 56
     const half = (bw - 12) / 2
     return {
       panel: { x: px, y: py, w: pw, h: ph },
-      restart: { x: px + 28, y: py + 200, w: bw, h: 52 },
-      menu: { x: px + 28, y: py + 266, w: half, h: 44 },
-      share: { x: px + 28 + half + 12, y: py + 266, w: half, h: 44 },
+      restart: {
+        x: px + 28,
+        y: py + (failed ? 276 : 200),
+        w: bw,
+        h: failed ? 48 : 52,
+      },
+      menu: {
+        x: px + 28,
+        y: py + (failed ? 332 : 266),
+        w: half,
+        h: failed ? 42 : 44,
+      },
+      share: {
+        x: px + 28 + half + 12,
+        y: py + (failed ? 332 : 266),
+        w: half,
+        h: failed ? 42 : 44,
+      },
+      diagnosis: failed
+        ? { x: px + 16, y: py + 184, w: pw - 32, h: 58 }
+        : null,
     }
   }
 
@@ -4111,7 +4296,12 @@ export class Game {
 
     setFont(ctx, 11, '500')
     ctx.fillStyle = 'rgba(110, 132, 156, 0.7)'
-    ctx.fillText('本地存档 · 战绩保存在本机', W / 2, H - 24)
+    ctx.fillText(
+      this.clearance
+        ? '已通关 · 新一轮从第 1 关继承通关时的兵力与金币'
+        : '本地存档 · 战绩保存在本机',
+      W / 2, H - 24
+    )
 
     ctx.textAlign = 'left'
     ctx.textBaseline = 'alphabetic'
@@ -4350,6 +4540,7 @@ export class Game {
 
     const L = this.gameoverLayout()
     const p = L.panel
+    const failed = !this.victory
     fillRoundRect(ctx, p.x, p.y, p.w, p.h, 20, 'rgba(12, 22, 34, 0.95)')
     strokeRoundRect(
       ctx, p.x, p.y, p.w, p.h, 20,
@@ -4363,24 +4554,27 @@ export class Game {
     ctx.textBaseline = 'middle'
 
     const allClear = this.victory && this.level >= LEVELS.length
+    const titleY = failed ? p.y + 38 : p.y + 42
     setFont(ctx, 30, 'bold')
     ctx.fillStyle = this.victory ? '#8ff0b5' : '#ff8a8a'
     ctx.fillText(
       allClear
         ? '全部关卡完成'
         : this.victory ? `第 ${this.level} 关完成` : '全军覆没',
-      this.W / 2, p.y + 42
+      this.W / 2, titleY
     )
 
     setFont(ctx, 14, '500')
     ctx.fillStyle = 'rgba(168, 190, 214, 0.95)'
     ctx.fillText(
       this.victory
-        ? allClear ? `${LEVELS.length} 关敌军已全部清剿` : '敌军基地已清剿'
+        ? allClear
+          ? `${LEVELS.length} 关敌军已全部清剿 · 新一轮继承通关编队`
+          : '敌军基地已清剿'
         : this.levelMode
           ? `第 ${this.level} 关 · 全军覆没`
           : `坚守到第 ${this.wave} 波`,
-      this.W / 2, p.y + 78
+      this.W / 2, failed ? p.y + 68 : p.y + 78
     )
 
     const stats = [
@@ -4393,11 +4587,69 @@ export class Game {
       const sx = p.x + 16 + colW * (i + 0.5)
       setFont(ctx, 11, '500')
       ctx.fillStyle = 'rgba(143, 166, 189, 0.9)'
-      ctx.fillText(stats[i].label, sx, p.y + 112)
+      ctx.fillText(stats[i].label, sx, failed ? p.y + 94 : p.y + 112)
 
       setFont(ctx, 19, 'bold')
       ctx.fillStyle = stats[i].color
-      ctx.fillText(stats[i].value, sx, p.y + 140)
+      ctx.fillText(stats[i].value, sx, failed ? p.y + 118 : p.y + 140)
+    }
+
+    if (failed) {
+      // 分隔线：上面是本局总览，下面是本关战况
+      ctx.fillStyle = 'rgba(120, 170, 220, 0.16)'
+      ctx.fillRect(p.x + 20, p.y + 134, p.w - 40, 1)
+
+      const earned = Math.max(0, this.levelCoinsEarned || 0)
+      const coinText = earned >= 100
+        ? formatNumber(Math.floor(earned))
+        : String(Math.round(earned * 10) / 10)
+      const tierName = TROOP_TIERS[
+        clamp(this.maxTier || 1, 1, TROOP_TIERS.length) - 1
+      ].name
+      const levelStats = [
+        {
+          label: '本关损失',
+          value: formatCompact(this.levelTroopsLost || 0),
+          color: '#ff9f7a',
+        },
+        {
+          label: '本关击杀',
+          value: formatNumber(this.levelKills || 0),
+          color: '#f0f6ff',
+        },
+        { label: '本关金币', value: coinText, color: COLORS.gold },
+        { label: '最高编制', value: tierName, color: '#a8d8ff' },
+      ]
+      const levelColW = (p.w - 32) / 4
+      for (let i = 0; i < levelStats.length; i++) {
+        const sx = p.x + 16 + levelColW * (i + 0.5)
+        setFont(ctx, 10, '500')
+        ctx.fillStyle = 'rgba(143, 166, 189, 0.9)'
+        ctx.fillText(levelStats[i].label, sx, p.y + 150)
+
+        setFont(ctx, 15, 'bold')
+        ctx.fillStyle = levelStats[i].color
+        ctx.fillText(levelStats[i].value, sx, p.y + 170)
+      }
+
+      const note = this.failureNote || this.buildFailureDiagnosis()
+      const d = L.diagnosis
+      fillRoundRect(ctx, d.x, d.y, d.w, d.h, 12, 'rgba(20, 34, 48, 0.9)')
+      strokeRoundRect(
+        ctx, d.x, d.y, d.w, d.h, 12,
+        'rgba(120, 170, 220, 0.2)', 1
+      )
+      ctx.textAlign = 'left'
+      setFont(ctx, 10, 'bold')
+      ctx.fillStyle = 'rgba(143, 166, 189, 0.9)'
+      ctx.fillText('本关诊断', d.x + 12, d.y + 14)
+      setFont(ctx, 12, 'bold')
+      ctx.fillStyle = note.color
+      ctx.fillText(note.text, d.x + 12, d.y + 34)
+      setFont(ctx, 10, '500')
+      ctx.fillStyle = 'rgba(168, 190, 214, 0.95)'
+      ctx.fillText(note.hint, d.x + 12, d.y + 50)
+      ctx.textAlign = 'center'
     }
 
     let record = ''
@@ -4416,7 +4668,7 @@ export class Game {
     }
     setFont(ctx, 14, 'bold')
     ctx.fillStyle = recordColor
-    ctx.fillText(record, this.W / 2, p.y + 176)
+    ctx.fillText(record, this.W / 2, failed ? p.y + 260 : p.y + 176)
 
     const canNext = this.victory && this.level < LEVELS.length
     const canRetry =
