@@ -270,6 +270,13 @@
       }
     }
 
+    /* 手机端少一层全屏合成：mask 渐变会额外生成一个需要混合的图层 */
+    @media (pointer: coarse) {
+      body::after {
+        display: none;
+      }
+    }
+
     noscript {
       position: fixed;
       inset: 0;

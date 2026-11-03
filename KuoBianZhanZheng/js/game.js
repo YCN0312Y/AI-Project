@@ -30,8 +30,9 @@ import {
 } from './storage'
 import {
   createBackground,
+  createCoverLayer,
+  clearFighterSprites,
   drawEmblem,
-  drawCover,
   drawBushes,
   drawGrenade,
   drawUnitBadge,
@@ -43,19 +44,42 @@ import { Crate } from './crate'
 import { Effects } from './effects'
 import { Bgm, Sfx } from './audio'
 
+// 敌方特殊武器配置表（按关卡段）。用常量避免每帧构造新数组。
+const ENEMY_MODES_MG = ['mg']
+const ENEMY_MODES_GRENADE = ['grenade', 'mg']
+const ENEMY_MODES_MORTAR = ['mortar', 'grenade', 'mg']
+
 export class Game {
   constructor() {
     this.canvas = wx.createCanvas()
-    this.ctx = this.canvas.getContext('2d')
+    // 主画布每帧都会铺满，关闭透明通道可以少做一次混合。
+    this.ctx = this.canvas.getContext('2d', { alpha: false })
 
     this.W = 375
     this.H = 667
     this.dpr = 1
+    this.dprCap = 0
+    this.isMobile = false
     this.safeTop = 0
     this.safeBottom = 0
     this.playTop = 64
     this.playBottom = 560
     this.bgCanvas = null
+    this.coverLayer = null
+    this.coverLayerY = 0
+    this.coverLayerH = 0
+    this.perfFrames = 0
+    this.perfSlow = 0
+    this.perfCooldown = 0
+    // 屏幕刷新间隔与据此推导的渲染预算（见 noteRefreshSample）
+    this.refreshMs = 0
+    this.refreshSamples = []
+    this.playBudget = 0
+    this.menuBudget = 0
+    this.fps = 0
+    this.playFps = 0
+    this.fpsAcc = 0
+    this.fpsFrames = 0
 
     this.save = loadSave()
     this.resume = loadCampaign()
@@ -160,10 +184,18 @@ export class Game {
       }
     }
 
-    this.last = Date.now()
+    this.last = this.nowMs()
+    this.frameAcc = 0
     this.tick = this.tick.bind(this)
     this.audio.playMenu()
     requestAnimationFrame(this.tick)
+  }
+
+  // 单调时钟：Date.now 会被系统校时影响，performance.now 更稳，且精度更高
+  nowMs() {
+    return typeof performance !== 'undefined' && performance.now
+      ? performance.now()
+      : Date.now()
   }
 
   // ---------- 基础 ----------
@@ -245,20 +277,55 @@ export class Game {
 
   resize() {
     const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
-    this.W = info.windowWidth || 375
-    this.H = info.windowHeight || 667
-    this.dpr = Math.min(info.pixelRatio || 1, 2)
+    const nextW = info.windowWidth || 375
+    const nextH = info.windowHeight || 667
+    const nextMobile = nextW <= 560
+    // 手机先以 1.5 倍渲染；如果仍持续掉帧，运行时会继续降到 1.0 倍。
+    // 手机屏幕小，1.5 倍放大后肉眼几乎看不出差别，但像素量比 1.75 倍少 26%。
+    if (!this.dprCap) {
+      this.dprCap = this.save && this.save.perfMode ? 1 : nextMobile ? 1.5 : 2
+    }
+    const nextDpr = Math.min(info.pixelRatio || 1, this.dprCap)
 
     const sa = info.safeArea
-    this.safeTop = sa && typeof sa.top === 'number' ? Math.max(0, sa.top) : 0
-    this.safeBottom =
-      sa && typeof sa.bottom === 'number' ? Math.max(0, this.H - sa.bottom) : 0
+    const nextSafeTop = sa && typeof sa.top === 'number' ? Math.max(0, sa.top) : 0
+    const nextSafeBottom =
+      sa && typeof sa.bottom === 'number' ? Math.max(0, nextH - sa.bottom) : 0
+
+    // 移动浏览器在地址栏收缩、键盘弹出、页面缩放时会反复触发 resize。
+    // 尺寸和像素比都没变时只同步安全区，不重建背景、不清空棋子精灵缓存，
+    // 也不打断正在进行的拖动。
+    if (
+      this.bgCanvas &&
+      nextW === this.W &&
+      nextH === this.H &&
+      Math.abs(nextDpr - this.dpr) < 0.001
+    ) {
+      if (this.safeTop !== nextSafeTop || this.safeBottom !== nextSafeBottom) {
+        this.safeTop = nextSafeTop
+        this.safeBottom = nextSafeBottom
+        this.playTop = this.safeTop + 62
+        this.playBottom = this.troopPanelLayout().panel.y - 10
+      }
+      return
+    }
+
+    this.W = nextW
+    this.H = nextH
+    this.isMobile = nextMobile
+    // 换了显示器/转屏后刷新率可能变了，重新估算帧节奏
+    this.resetRefreshEstimate()
+    if (this.fx) {
+      this.fx.setQuality(
+        this.save && this.save.perfMode ? 0.35 : this.isMobile ? 0.7 : 1
+      )
+    }
+
+    this.safeTop = nextSafeTop
+    this.safeBottom = nextSafeBottom
     this.playTop = this.safeTop + 62
 
-    this.canvas.width = Math.round(this.W * this.dpr)
-    this.canvas.height = Math.round(this.H * this.dpr)
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
-    this.bgCanvas = createBackground(this.W, this.H, this.dpr)
+    this.applyRenderScale(info.pixelRatio || 1)
 
     this.playBottom = this.troopPanelLayout().panel.y - 10
     this.flow = null
@@ -287,6 +354,60 @@ export class Game {
       )
     }
     this.drag = null
+  }
+
+  // 只调整画布分辨率，不改变布局和游戏状态。
+  applyRenderScale(pixelRatio, oldBackground) {
+    this.dpr = Math.min(pixelRatio || 1, this.dprCap)
+    this.canvas.width = Math.round(this.W * this.dpr)
+    this.canvas.height = Math.round(this.H * this.dpr)
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    this.ctx.__kbDpr = this.dpr
+    clearFighterSprites()
+
+    if (oldBackground) {
+      // 动态降分辨率时复用旧背景，避免背景纹路突然变化。
+      const canvas = wx.createCanvas()
+      canvas.width = this.canvas.width
+      canvas.height = this.canvas.height
+      const bg = canvas.getContext('2d')
+      bg.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+      bg.drawImage(oldBackground, 0, 0, this.W, this.H)
+      this.bgCanvas = canvas
+    } else {
+      this.bgCanvas = createBackground(this.W, this.H, this.dpr)
+    }
+    this.coverLayer = null
+  }
+
+  // 连续掉帧时逐级降低渲染分辨率。只降不升，避免在临界帧率反复抖动。
+  trackPerf(rawDt) {
+    if (this.state !== 'playing' || this.levelNotice) {
+      this.perfFrames = 0
+      this.perfSlow = 0
+      return
+    }
+    if (this.perfCooldown > 0) {
+      this.perfCooldown = Math.max(0, this.perfCooldown - rawDt)
+      return
+    }
+    if (!(rawDt > 0) || rawDt > 0.25) return
+
+    this.perfFrames += 1
+    if (rawDt > 0.024) this.perfSlow += 1
+    if (this.perfFrames < 60) return
+
+    const slowRatio = this.perfSlow / this.perfFrames
+    this.perfFrames = 0
+    this.perfSlow = 0
+    // 掉帧比例超过 25% 就降一档；自动降级最低到 1.25 倍，
+    // 想要更省性能可以在设置里手动开「流畅模式」（1 倍渲染）。
+    if (slowRatio < 0.25 || this.dpr <= 1.26 || this.dprCap <= 1.26) return
+
+    this.dprCap = Math.max(1.25, this.dprCap - 0.25)
+    const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+    this.applyRenderScale(info.pixelRatio || 1, this.bgCanvas)
+    this.perfCooldown = 2
   }
 
   // 居中的 5 列编制阵型，按距中心远近分配槽位
@@ -405,7 +526,9 @@ export class Game {
     }
     if (wx.onShow) {
       wx.onShow(() => {
-        this.last = Date.now()
+        this.last = this.nowMs()
+        this.frameAcc = 0
+        this.resetRefreshEstimate()
       })
     }
     if (wx.onWindowResize) {
@@ -420,17 +543,107 @@ export class Game {
     }
   }
 
+  // ---- 帧节奏 ----
+  // 曾经的固定 16.67ms 预算在非 60Hz 屏幕上会"跳帧不匀"：
+  // 90Hz 每帧 11.1ms，累计到 22.2ms 才画一次，实际是"画-画-停"的抖动，
+  // 平均 60fps 但看起来一顿一顿。现在先量出屏幕刷新间隔，再把渲染间隔
+  // 对齐到刷新间隔的整数倍，节奏才是均匀的。
+  noteRefreshSample(elapsed) {
+    if (this.refreshMs) return
+    if (!(elapsed > 3) || elapsed > 60) return
+    this.refreshSamples.push(elapsed)
+    if (this.refreshSamples.length < 20) return
+
+    // 掉帧只会让间隔变长，取 20% 分位近似真实刷新间隔
+    const sorted = this.refreshSamples.slice().sort((a, b) => a - b)
+    const refresh = sorted[Math.floor(sorted.length * 0.2)] || 1000 / 60
+    this.refreshSamples.length = 0
+    this.refreshMs = refresh
+    this.playBudget = this.resolvePlayBudget(refresh)
+    this.menuBudget = this.snapBudget(1000 / 30, refresh)
+  }
+
+  // 把目标帧时长吸附到刷新的整数倍
+  snapBudget(ms, refresh) {
+    const r = refresh || this.refreshMs
+    if (!r) return ms
+    const k = Math.max(1, Math.round(ms / r))
+    return k * r
+  }
+
+  // 窗口尺寸、显示器或前后台切换后重新估算刷新率
+  resetRefreshEstimate() {
+    this.refreshMs = 0
+    this.refreshSamples.length = 0
+    this.playBudget = 0
+    this.menuBudget = 0
+  }
+
+  resolvePlayBudget(refresh) {
+    // 60Hz 及更低的屏幕：每帧都渲染
+    if (refresh >= 15.5) return refresh
+    const k = Math.max(1, Math.round(1000 / 60 / refresh))
+    const fps = 1000 / (k * refresh)
+    // 分频后如果掉到 52fps 以下（典型是 90Hz 只能取 45fps），
+    // 与其掉到 45fps，不如直接跑屏幕原生刷新率，画面更连贯。
+    if (fps < 52) return refresh
+    return k * refresh
+  }
+
+  // 每帧预算：战斗对齐刷新率取整数倍；菜单/暂停/结算画面约 30fps。
+  frameBudget() {
+    const base = this.state === 'playing'
+      ? this.playBudget
+      : this.menuBudget
+    if (!base) return this.state === 'playing' ? 1000 / 60 : 1000 / 30
+    return base
+  }
+
   tick() {
-    const now = Date.now()
-    let dt = (now - this.last) / 1000
+    const now = this.nowMs()
+    const budget = this.frameBudget()
+    const elapsed = now - this.last
     this.last = now
+    // 切后台回来、系统校时、或换了时钟源时，间隔会异常，重新对齐而不是把差值累积进帧预算
+    if (!(elapsed > 0) || elapsed > 5000) {
+      this.frameAcc = 0
+      requestAnimationFrame(this.tick)
+      return
+    }
+    this.noteRefreshSample(elapsed)
+    this.frameAcc += elapsed
+    // 容差按预算比例取，刷新率越高取样误差越小
+    if (this.frameAcc < budget - Math.min(3, budget * 0.2)) {
+      requestAnimationFrame(this.tick)
+      return
+    }
+
+    const rawDt = this.frameAcc / 1000
+    this.frameAcc -= budget
+    if (this.frameAcc < 0) this.frameAcc = 0
+    let dt = rawDt
     if (!(dt > 0)) dt = 1 / 60
     if (dt > 0.05) dt = 0.05
 
     this.time += dt
     this.update(dt)
+    this.trackPerf(rawDt)
     this.render()
+    this.trackFps(rawDt)
     requestAnimationFrame(this.tick)
+  }
+
+  // 设置面板里显示的实测帧率（每 0.5 秒更新一次，避免数字乱跳）
+  trackFps(rawDt) {
+    if (!(rawDt > 0)) return
+    this.fpsAcc += rawDt
+    this.fpsFrames += 1
+    if (this.fpsAcc < 0.5) return
+    this.fps = Math.round(this.fpsFrames / this.fpsAcc)
+    // 菜单/设置界面按 30fps 节流，只有战斗帧率才是用户真正关心的数字
+    if (this.state === 'playing') this.playFps = this.fps
+    this.fpsAcc = 0
+    this.fpsFrames = 0
   }
 
   update(dt) {
@@ -535,7 +748,7 @@ export class Game {
     this.peakTroops = this.totalTroops()
     this.saveLevelCheckpoint()
     this.saveCampaign()
-    this.last = Date.now()
+    this.last = this.nowMs()
   }
 
   hasResume() {
@@ -730,7 +943,7 @@ export class Game {
     }
     this.audio.playBattle()
     this.state = 'playing'
-    this.last = Date.now()
+    this.last = this.nowMs()
     this.saveCampaign()
   }
 
@@ -809,7 +1022,7 @@ export class Game {
     this.peakTroops = Math.max(cp.peakTroops || 0, this.totalTroops())
     this.audio.playBattle()
     this.state = 'playing'
-    this.last = Date.now()
+    this.last = this.nowMs()
     // 快照本身保留，连续失败重试仍然回到同一份开场状态
     this.saveCampaign()
   }
@@ -822,6 +1035,7 @@ export class Game {
     this.level = levelData.level
     this.wave = levelData.level
     this.covers = []
+    this.coverLayer = null
     this.flowGrid = null
     this.mapDecor = { zones: [], labels: [] }
     this.levelMode = true
@@ -1283,25 +1497,51 @@ export class Game {
   }
 
   // 只补发空缺武器；受伤、增援不会抢走仍存活持有者的装备。
+  // 这个函数每帧都会跑，所以用固定表 + 就地循环，避免每帧新建数组/Set 排序。
   assignEnemyWeapons() {
-    const modes = !this.levelMode || this.level < 20 ? []
-      : this.level < 30 ? ['mg']
-        : this.level < 40 ? ['grenade', 'mg'] : ['mortar', 'grenade', 'mg']
-    const alive = this.enemies.filter(e => !e.dead && e.troops > 0)
-    const held = new Set()
-    for (const enemy of alive) {
-      if (modes.includes(enemy.weapon) && !held.has(enemy.weapon)) {
-        held.add(enemy.weapon)
-      } else enemy.weapon = 'rifle'
+    if (!this.levelMode) return
+    if (this.level < 20) return // 前 19 关全部普通步枪，敌人默认就是 rifle
+    const MODES = this.level < 30
+      ? ENEMY_MODES_MG
+      : this.level < 40 ? ENEMY_MODES_GRENADE : ENEMY_MODES_MORTAR
+
+    const es = this.enemies
+    let heldMg = false
+    let heldGrenade = false
+    let heldMortar = false
+
+    // 第一遍：同一把特殊武器只保留最先出场的那名持有者，其余退回步枪
+    for (let i = 0; i < es.length; i++) {
+      const e = es[i]
+      if (e.dead || e.troops <= 0) continue
+      const w = e.weapon
+      if (w === 'mg' && MODES.indexOf('mg') !== -1 && !heldMg) heldMg = true
+      else if (w === 'grenade' && MODES.indexOf('grenade') !== -1 && !heldGrenade) {
+        heldGrenade = true
+      } else if (w === 'mortar' && MODES.indexOf('mortar') !== -1 && !heldMortar) {
+        heldMortar = true
+      } else e.weapon = 'rifle'
     }
-    const candidates = alive.filter(e => e.weapon === 'rifle')
-      .sort((a, b) => b.troops - a.troops)
-    for (const mode of modes) {
-      if (held.has(mode)) continue
-      const enemy = candidates.shift()
-      if (!enemy) break
-      enemy.weapon = mode
-      enemy.cool = Math.min(enemy.cool, CFG.weapons[mode].interval)
+
+    // 第二遍：按当前兵力从高到低补发空缺的特殊武器
+    for (let m = 0; m < MODES.length; m++) {
+      const mode = MODES[m]
+      if (
+        (mode === 'mg' && heldMg) ||
+        (mode === 'grenade' && heldGrenade) ||
+        (mode === 'mortar' && heldMortar)
+      ) {
+        continue
+      }
+      let best = null
+      for (let i = 0; i < es.length; i++) {
+        const e = es[i]
+        if (e.dead || e.troops <= 0 || e.weapon !== 'rifle') continue
+        if (!best || e.troops > best.troops) best = e
+      }
+      if (!best) break
+      best.weapon = mode
+      best.cool = Math.min(best.cool, CFG.weapons[mode].interval)
     }
   }
 
@@ -1868,7 +2108,7 @@ export class Game {
     const meritBonus = CFG.merit.waveBase + this.wave * CFG.merit.waveGrowth
     this.score += bonus
     this.merit += meritBonus
-    this.healUnits(CFG.squad.healOnWave)
+    const healed = this.healUnits(CFG.squad.healOnWave)
 
     const crateCount = Math.min(
       CFG.crate.maxOnField,
@@ -1883,11 +2123,18 @@ export class Game {
       this.target.x, this.target.y,
       'rgba(130, 230, 170, 0.9)', 20, 90, 0.5
     )
-    this.fx.text(this.target.x, this.target.y - 34, '部队整补', COLORS.heal, 14, 0.9)
+    this.fx.text(
+      this.target.x, this.target.y - 34,
+      healed > 0 ? `部队整补 +${formatNumber(healed)}` : '部队整补',
+      COLORS.heal, 14, 0.9
+    )
 
     this.banner = {
       text: `第 ${this.wave} 波 清除`,
-      sub: `+${formatNumber(bonus)} 分 · +${formatNumber(meritBonus)} 军功 · 收集补给箱`,
+      sub:
+        `+${formatNumber(bonus)} 分 · +${formatNumber(meritBonus)} 军功` +
+        (healed > 0 ? ` · 补兵 +${formatNumber(healed)}` : '') +
+        ' · 收集补给箱',
       life: 2,
       max: 2,
       color: COLORS.heal,
@@ -1957,11 +2204,18 @@ export class Game {
   collectCrate(c) {
     const gain = CFG.crate.merit
     this.merit += gain
-    this.healUnits(CFG.crate.healPct)
+    const healed = this.healUnits(CFG.crate.healPct)
 
     this.fx.ring(c.x, c.y, 'rgba(140, 210, 255, 0.95)', 4, 46, 0.45)
     this.fx.spark(c.x, c.y, '#9fd0ff', 14, 150)
-    this.fx.text(c.x, c.y - 20, `+${formatNumber(gain)} 军功`, COLORS.merit, 15, 0.9)
+    // 补给箱同时补兵，要把两部分收益都写清楚，避免"莫名回血"
+    this.fx.text(
+      c.x, c.y - 20,
+      healed > 0
+        ? `+${formatNumber(gain)} 军功 · +${formatNumber(healed)} 兵力`
+        : `+${formatNumber(gain)} 军功`,
+      COLORS.merit, 14, 0.9
+    )
     this.shake = Math.min(6, this.shake + 1.5)
     this.vibrate()
   }
@@ -3000,14 +3254,19 @@ export class Game {
   }
 
   healUnits(pct) {
+    let healed = 0
     for (let i = 0; i < this.units.length; i++) {
       const u = this.units[i]
       if (u.dead) continue
+      const before = u.troops
       u.troops = Math.min(
         u.troopsMax,
         u.troops + Math.round(u.troopsMax * pct)
       )
+      healed += u.troops - before
     }
+    // 返回实际补到的兵力总量，调用方据此给出提示（已满编时为 0）
+    return healed
   }
 
   gameOver() {
@@ -3100,7 +3359,9 @@ export class Game {
     this.drag = null
     this.panelMsg = null
     this.banner = null
-    this.healUnits(CFG.level.healBetweenLevels || 0.25)
+    // 过关不补兵：本关结束时剩多少兵力，下一关就带多少（比例由配置决定，默认 0）
+    const healPct = CFG.level.healBetweenLevels
+    if (healPct > 0) this.healUnits(healPct)
     this.meritTimer = CFG.merit.passiveInterval
 
     this.setupLevel(this.level)
@@ -3111,7 +3372,7 @@ export class Game {
     this.peakTroops = Math.max(this.peakTroops, this.totalTroops())
     this.saveLevelCheckpoint()
     this.saveCampaign()
-    this.last = Date.now()
+    this.last = this.nowMs()
   }
 
   finishRun(victory) {
@@ -3221,7 +3482,7 @@ export class Game {
   resumeBattle() {
     if (this.state !== 'paused') return
     this.state = 'playing'
-    this.last = Date.now()
+    this.last = this.nowMs()
     this.audio.resume()
   }
 
@@ -3240,6 +3501,7 @@ export class Game {
     this.arrows.length = 0
     this.crates.length = 0
     this.covers.length = 0
+    this.coverLayer = null
     this.grenades.length = 0
     this.bushes = []
     this.weaponMode = null
@@ -3332,6 +3594,7 @@ export class Game {
         const L = this.settingsLayout()
         if (pointsInRect(x, y, L.toggle, 8)) this.toggleMusic()
         else if (pointsInRect(x, y, L.sfxToggle, 8)) this.toggleSfx()
+        else if (pointsInRect(x, y, L.perfToggle, 8)) this.togglePerf()
         else if (pointsInRect(x, y, L.close, 8)) this.settingsOpen = false
         else if (pointsInRect(x, y, L.done, 6)) this.settingsOpen = false
         else if (!pointsInRect(x, y, L.panel, 0)) this.settingsOpen = false
@@ -3511,16 +3774,18 @@ export class Game {
 
   settingsLayout() {
     const pw = Math.min(this.W - 52, 330)
-    const ph = 318
+    const ph = 386
     const px = (this.W - pw) / 2
     const py = Math.max(this.safeTop + 30, (this.H - ph) / 2)
     return {
       panel: { x: px, y: py, w: pw, h: ph },
       close: { x: px + pw - 40, y: py + 10, w: 30, h: 30 },
-      music: { x: px + 18, y: py + 78, w: pw - 36, h: 66 },
-      toggle: { x: px + pw - 96, y: py + 94, w: 60, h: 32 },
-      sfx: { x: px + 18, y: py + 150, w: pw - 36, h: 66 },
-      sfxToggle: { x: px + pw - 96, y: py + 166, w: 60, h: 32 },
+      music: { x: px + 18, y: py + 74, w: pw - 36, h: 62 },
+      toggle: { x: px + pw - 96, y: py + 89, w: 60, h: 32 },
+      sfx: { x: px + 18, y: py + 142, w: pw - 36, h: 62 },
+      sfxToggle: { x: px + pw - 96, y: py + 157, w: 60, h: 32 },
+      perf: { x: px + 18, y: py + 210, w: pw - 36, h: 62 },
+      perfToggle: { x: px + pw - 96, y: py + 225, w: 60, h: 32 },
       done: { x: px + 30, y: py + ph - 78, w: pw - 60, h: 46 },
     }
   }
@@ -3561,6 +3826,32 @@ export class Game {
     this.sfx.setEnabled(this.save.sfxOn)
     writeSave(this.save)
     this.vibrate()
+  }
+
+  // 流畅模式：把画布按 1 倍渲染（像素量约为默认档的 44%），并降低粒子数量。
+  // 留给低端机自救，切换后立即生效并写入存档。
+  togglePerf() {
+    this.save.perfMode = !this.save.perfMode
+    writeSave(this.save)
+    this.applyQualityMode()
+    this.vibrate()
+  }
+
+  qualityCap() {
+    if (this.save && this.save.perfMode) return 1
+    return this.isMobile ? 1.5 : 2
+  }
+
+  applyQualityMode() {
+    if (this.fx) {
+      this.fx.setQuality(
+        this.save && this.save.perfMode ? 0.35 : this.isMobile ? 0.7 : 1
+      )
+    }
+    this.dprCap = this.qualityCap()
+    const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+    // 切换档位时背景纹理尺寸变了，重建一次，避免放大旧背景发虚
+    this.applyRenderScale(info.pixelRatio || 1)
   }
 
   pauseLayout() {
@@ -3699,22 +3990,35 @@ export class Game {
       this.crates[i].draw(ctx, this.time)
     }
 
-    for (let i = 0; i < this.covers.length; i++) {
-      drawCover(ctx, this.covers[i])
+    if (this.covers.length) {
+      if (!this.coverLayer) {
+        const pad = 24
+        const top = Math.max(0, this.playTop - pad)
+        const bottom = Math.min(this.H, this.playBottom + pad)
+        this.coverLayerY = top
+        this.coverLayerH = bottom - top
+        this.coverLayer = createCoverLayer(
+          this.covers, 0, top, this.W, this.coverLayerH, this.dpr
+        )
+      }
+      ctx.drawImage(
+        this.coverLayer, 0, this.coverLayerY, this.W, this.coverLayerH
+      )
     }
 
     for (let i = 0; i < this.arrows.length; i++) {
       this.arrows[i].draw(ctx)
     }
 
+    // 我方和敌方合并后只排序一次，再分两趟绘制，草丛夹在中间。
     const units = this._units
-
-    // 先画我方单位（会被草丛覆盖），再画草丛，最后画敌人（草丛不覆盖敌人）
     units.length = 0
     for (let i = 0; i < this.units.length; i++) units.push(this.units[i])
+    for (let i = 0; i < this.enemies.length; i++) units.push(this.enemies[i])
     units.sort((a, b) => a.y - b.y)
+
     for (let i = 0; i < units.length; i++) {
-      units[i].draw(ctx, this.time, false)
+      if (!units[i].isEnemy) units[i].draw(ctx, this.time, false)
     }
 
     drawBushes(
@@ -3725,19 +4029,12 @@ export class Game {
       this.shrubReady ? this.shrubImage : null
     )
 
-    units.length = 0
-    for (let i = 0; i < this.enemies.length; i++) units.push(this.enemies[i])
-    units.sort((a, b) => a.y - b.y)
     for (let i = 0; i < units.length; i++) {
-      units[i].draw(ctx, this.time, false)
+      if (units[i].isEnemy) units[i].draw(ctx, this.time, false)
     }
 
     // 所有文字和标签都在掩体/草丛之上绘制
     this.drawLevelLabels(ctx)
-    units.length = 0
-    for (let i = 0; i < this.units.length; i++) units.push(this.units[i])
-    for (let i = 0; i < this.enemies.length; i++) units.push(this.enemies[i])
-    units.sort((a, b) => a.y - b.y)
     for (let i = 0; i < units.length; i++) {
       drawUnitBadge(ctx, units[i])
     }
@@ -3910,7 +4207,12 @@ export class Game {
 
     if (pillText) {
       setFont(ctx, 12, 'bold')
-      const tw = ctx.measureText(pillText).width + 22
+      let tw = this.hudPillWidth
+      if (this.hudPillText !== pillText) {
+        tw = ctx.measureText(pillText).width + 22
+        this.hudPillText = pillText
+        this.hudPillWidth = tw
+      }
       const cx = this.W / 2
       const cy = barY + barH + 16
 
@@ -4189,7 +4491,8 @@ export class Game {
     if (b.sub) {
       setFont(ctx, 13, '500')
       ctx.fillStyle = 'rgba(190, 210, 232, 0.9)'
-      ctx.fillText(b.sub, this.W / 2, y + 30)
+      // 限宽避免窄屏溢出（补兵提示会让副标题变长）
+      ctx.fillText(b.sub, this.W / 2, y + 30, this.W - 24)
     }
 
     ctx.globalAlpha = 1
@@ -4338,7 +4641,7 @@ export class Game {
     ctx.lineTo(c.x + 9, c.y + c.h - 9)
     ctx.stroke()
 
-    // 背景音乐 / 战斗音效
+    // 背景音乐 / 战斗音效 / 流畅模式
     this.drawSettingRow(
       ctx, L.music, L.toggle,
       this.save.musicOn !== false,
@@ -4351,13 +4654,23 @@ export class Game {
       '战斗音效',
       '玩家/敌人射击 · 命中 · 受伤 · 爆炸'
     )
+    this.drawSettingRow(
+      ctx, L.perf, L.perfToggle,
+      !!this.save.perfMode,
+      '流畅模式',
+      '降低渲染分辨率，手机卡顿时开启'
+    )
 
     this.drawButton(ctx, L.done, '完成', true)
 
     setFont(ctx, 10, '500')
     ctx.textAlign = 'center'
     ctx.fillStyle = 'rgba(120, 145, 170, 0.8)'
-    ctx.fillText('设置会自动保存', p.x + p.w / 2, p.y + p.h - 18)
+    const fpsText = this.playFps > 0 ? `战斗 ${this.playFps}fps · ` : ''
+    ctx.fillText(
+      `${fpsText}渲染 ${this.dpr.toFixed(2)}x · 自动保存`,
+      p.x + p.w / 2, p.y + p.h - 18
+    )
 
     ctx.textAlign = 'left'
     ctx.textBaseline = 'alphabetic'

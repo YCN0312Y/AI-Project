@@ -41,7 +41,9 @@ export const CFG = {
     activeCap: 24, // 场上同时存在的敌人编制单位上限
     spawnBatch: 3, // 每次从各部放出的编制单位数量
     spawnInterval: 0.5, // 放兵间隔
-    healBetweenLevels: 0.25, // 过关后保留部队并回复 25% 兵力
+    // 过关不回血：这一关结束时各编制剩多少兵力，下一关就带多少。
+    // 想恢复"过关回复"的话，把这个值改成 0.25 之类的比例即可。
+    healBetweenLevels: 0,
   },
 
   weapons: {

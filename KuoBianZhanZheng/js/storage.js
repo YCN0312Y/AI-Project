@@ -13,6 +13,7 @@ const DEFAULT_SAVE = {
   plays: 0,
   musicOn: true,
   sfxOn: true,
+  perfMode: false,
 }
 
 export function loadSave() {
@@ -27,6 +28,8 @@ export function loadSave() {
       plays: Math.max(0, Number(raw.plays) || 0),
       musicOn: raw.musicOn !== false,
       sfxOn: raw.sfxOn !== false,
+      // 流畅模式：低端机降低渲染分辨率的用户选择
+      perfMode: raw.perfMode === true,
     }
   } catch (e) {
     return Object.assign({}, DEFAULT_SAVE)
@@ -43,6 +46,7 @@ export function writeSave(data) {
       plays: data.plays,
       musicOn: data.musicOn !== false,
       sfxOn: data.sfxOn !== false,
+      perfMode: data.perfMode === true,
     })
   } catch (e) {
     // 存储失败不影响游戏进行

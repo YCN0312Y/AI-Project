@@ -37,7 +37,11 @@ export function easeOutCubic(t) {
 }
 
 export function setFont(ctx, size, weight = 'bold') {
-  ctx.font = `${weight} ${size}px sans-serif`
+  const key = `${weight} ${size}`
+  // 画布字体重复赋值也会触发字体解析，缓存当前字体避免每帧重设。
+  if (ctx.__kbFont === key) return
+  ctx.__kbFont = key
+  ctx.font = `${key}px sans-serif`
 }
 
 export function roundRectPath(ctx, x, y, w, h, r) {

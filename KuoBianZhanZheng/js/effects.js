@@ -1,15 +1,23 @@
-import { TAU, clamp } from './utils'
+import { TAU, clamp, setFont } from './utils'
 
 export class Effects {
   constructor() {
     this.parts = []
     this.rings = []
     this.texts = []
+    this.quality = 1
+  }
+
+  // 手机端适当减少粒子数量；不影响命中判定和伤害数值。
+  setQuality(quality) {
+    this.quality = clamp(quality, 0.4, 1)
   }
 
   spark(x, y, color, count = 6, speed = 110) {
-    for (let i = 0; i < count; i++) {
-      if (this.parts.length >= 260) return
+    const n = Math.max(2, Math.round(count * this.quality))
+    const maxParts = Math.round(260 * this.quality)
+    for (let i = 0; i < n; i++) {
+      if (this.parts.length >= maxParts) return
       const a = Math.random() * TAU
       const v = speed * (0.35 + Math.random() * 0.85)
       const life = 0.28 + Math.random() * 0.38
@@ -27,12 +35,14 @@ export class Effects {
   }
 
   ring(x, y, color, r0, r1, life) {
-    if (this.rings.length >= 40) this.rings.shift()
+    const maxRings = Math.round(40 * this.quality)
+    if (this.rings.length >= maxRings) this.rings.shift()
     this.rings.push({ x, y, color, r0, r1, life, max: life })
   }
 
   text(x, y, str, color, size = 13, life = 0.7) {
-    if (this.texts.length >= 36) this.texts.shift()
+    const maxTexts = Math.round(36 * this.quality)
+    if (this.texts.length >= maxTexts) this.texts.shift()
     this.texts.push({ x, y, str, color, size, life, max: life, vy: -26 })
   }
 
@@ -100,7 +110,7 @@ export class Effects {
       const a = clamp(t.life / t.max, 0, 1)
       ctx.globalAlpha = a
       ctx.fillStyle = t.color
-      ctx.font = `bold ${t.size}px sans-serif`
+      setFont(ctx, t.size, 'bold')
       ctx.fillText(t.str, t.x, t.y)
     }
 

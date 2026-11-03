@@ -72,8 +72,30 @@
       }
     }
 
-    stageWidth = Math.max(1, Math.round(width))
-    stageHeight = Math.max(1, Math.round(height))
+    const nextW = Math.max(1, Math.round(width))
+    const nextH = Math.max(1, Math.round(height))
+    // 尺寸没变就不再改样式，避免重复触发移动端的样式重算
+    if (
+      nextW === stageWidth &&
+      nextH === stageHeight &&
+      mainCanvas.style.width === nextW + 'px'
+    ) {
+      return
+    }
+    stageWidth = nextW
+    stageHeight = nextH
+
+    const fullscreen = stageWidth === vw && stageHeight === vh
+    // 手机全屏时不用 transform 定位：少一层合成变换，移动端合成更省。
+    if (fullscreen) {
+      mainCanvas.style.left = '0px'
+      mainCanvas.style.top = '0px'
+      mainCanvas.style.transform = 'none'
+    } else {
+      mainCanvas.style.left = '50%'
+      mainCanvas.style.top = '50%'
+      mainCanvas.style.transform = 'translate(-50%,-50%)'
+    }
     mainCanvas.style.width = stageWidth + 'px'
     mainCanvas.style.height = stageHeight + 'px'
   }
@@ -163,8 +185,7 @@
     if (created === 1) {
       const canvas = document.createElement('canvas')
       canvas.style.cssText =
-        'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
-        'display:block;touch-action:none;z-index:2;background:#0a1118;'
+        'position:fixed;display:block;touch-action:none;z-index:2;background:#0a1118;'
       document.body.appendChild(canvas)
       mainCanvas = canvas
       layoutCanvas()
