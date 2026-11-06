@@ -185,6 +185,7 @@ export class Game {
     }
 
     this.last = this.nowMs()
+    this.lastRender = this.last
     this.frameAcc = 0
     this.tick = this.tick.bind(this)
     this.audio.playMenu()
@@ -400,11 +401,10 @@ export class Game {
     const slowRatio = this.perfSlow / this.perfFrames
     this.perfFrames = 0
     this.perfSlow = 0
-    // 掉帧比例超过 25% 就降一档；自动降级最低到 1.25 倍，
-    // 想要更省性能可以在设置里手动开「流畅模式」（1 倍渲染）。
-    if (slowRatio < 0.25 || this.dpr <= 1.26 || this.dprCap <= 1.26) return
+    // 掉帧比例超过 25% 就降一档，最低到 1 倍，低端手机无需手动找设置。
+    if (slowRatio < 0.25 || this.dpr <= 1.01 || this.dprCap <= 1.01) return
 
-    this.dprCap = Math.max(1.25, this.dprCap - 0.25)
+    this.dprCap = Math.max(1, this.dprCap - 0.25)
     const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
     this.applyRenderScale(info.pixelRatio || 1, this.bgCanvas)
     this.perfCooldown = 2
@@ -527,6 +527,7 @@ export class Game {
     if (wx.onShow) {
       wx.onShow(() => {
         this.last = this.nowMs()
+        this.lastRender = this.last
         this.frameAcc = 0
         this.resetRefreshEstimate()
       })
@@ -599,14 +600,16 @@ export class Game {
     return base
   }
 
-  tick() {
-    const now = this.nowMs()
+  tick(timestamp) {
+    // rAF 时间戳不受本帧回调开始前的主线程排队影响。
+    const now = Number.isFinite(timestamp) ? timestamp : this.nowMs()
     const budget = this.frameBudget()
     const elapsed = now - this.last
     this.last = now
     // 切后台回来、系统校时、或换了时钟源时，间隔会异常，重新对齐而不是把差值累积进帧预算
     if (!(elapsed > 0) || elapsed > 5000) {
       this.frameAcc = 0
+      this.lastRender = now
       requestAnimationFrame(this.tick)
       return
     }
@@ -618,9 +621,11 @@ export class Game {
       return
     }
 
-    const rawDt = this.frameAcc / 1000
-    this.frameAcc -= budget
-    if (this.frameAcc < 0) this.frameAcc = 0
+    // 帧节流的余数只用于排期，不能再次计入游戏时间。
+    // 掉帧后丢弃错过的渲染预算，避免累积“欠帧”导致持续追帧和时间加速。
+    const rawDt = (now - this.lastRender) / 1000
+    this.lastRender = now
+    this.frameAcc = this.frameAcc >= budget ? this.frameAcc % budget : 0
     let dt = rawDt
     if (!(dt > 0)) dt = 1 / 60
     if (dt > 0.05) dt = 0.05
@@ -3902,6 +3907,8 @@ export class Game {
   }
 
   troopPanelLayout() {
+    const key = `${this.W}|${this.H}|${this.safeBottom}`
+    if (this._panelLayoutKey === key) return this._panelLayout
     const margin = 8
     const pad = 8
     const headerH = 36
@@ -3954,7 +3961,8 @@ export class Game {
       mortar: bottomCell(2),
     }
 
-    return {
+    this._panelLayoutKey = key
+    this._panelLayout = {
       panel: { x, y, w: panelW, h: panelH },
       header: { x: innerX, y: y + pad, w: innerW, h: headerH },
       cards,
@@ -3962,6 +3970,7 @@ export class Game {
       message: { x: innerX, y: weaponY + cardH, w: innerW, h: messageH },
       weaponRow,
     }
+    return this._panelLayout
   }
 
   // ---------- 渲染 ----------
@@ -4226,6 +4235,37 @@ export class Game {
   }
 
   drawTroopPanel(ctx) {
+    const L = this.troopPanelLayout()
+    // 文字、圆角卡片在状态不变时只贴一次图；闪烁和武器倒计时仍逐帧更新。
+    const animated = this.weaponMode || this.cardFlash.some(value => value !== 0)
+    const message = this.panelMsg
+    const key = [this._panelLayoutKey, this.dpr, this.merit, this.coins,
+      this.units.length, this.highestTier(), message && message.text,
+      message && message.color].join('|')
+    let layer = this._panelLayer
+    const top = Math.max(0, L.panel.y - 2)
+    const height = this.H - top
+    if (!layer || layer.width !== this.canvas.width ||
+        layer.height !== Math.ceil(height * this.dpr)) {
+      layer = wx.createCanvas()
+      layer.width = this.canvas.width
+      layer.height = Math.ceil(height * this.dpr)
+      this._panelLayer = layer
+      this._panelLayerKey = null
+    }
+    if (animated || this._panelLayerKey !== key) {
+      const paint = layer.getContext('2d')
+      paint.setTransform(1, 0, 0, 1, 0, 0)
+      paint.clearRect(0, 0, layer.width, layer.height)
+      paint.setTransform(this.dpr, 0, 0, this.dpr, 0, -top * this.dpr)
+      this.paintTroopPanel(paint)
+      // 动画结束后的第一帧也需要重画，不能留下最后一帧的闪光。
+      this._panelLayerKey = animated ? null : key
+    }
+    ctx.drawImage(layer, 0, top, layer.width / this.dpr, layer.height / this.dpr)
+  }
+
+  paintTroopPanel(ctx) {
     const L = this.troopPanelLayout()
     const p = L.panel
     fillRoundRect(ctx, p.x, p.y, p.w, p.h, 16, 'rgba(8, 14, 22, 0.9)')
