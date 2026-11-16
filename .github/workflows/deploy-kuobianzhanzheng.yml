@@ -1,15 +1,6 @@
 name: Deploy KuoBianZhanZheng
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'KuoBianZhanZheng/web/**'
-      - 'KuoBianZhanZheng/js/**'
-      - 'KuoBianZhanZheng/assets/**'
-      - 'KuoBianZhanZheng/tools/build-web.cjs'
-      - 'KuoBianZhanZheng/tools/release-transforms.cjs'
-      - '.github/workflows/deploy-kuobianzhanzheng.yml'
   workflow_dispatch:
 
 permissions:
