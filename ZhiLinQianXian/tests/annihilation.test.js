@@ -104,7 +104,7 @@ test('非法待结算伤亡不制造伤员，人数上限计入本场临时伤�
 test('主页直接绘制大地图，三张大卡移除，常用入口保留且不改存档',()=>{
   const s=setup(),g=Object.create(Game.prototype),labels=[];g.save=s;g.scene='lobby';g.buttons=[];g.notify=()=>{};g.persist=()=>{}
   g.ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}}),fillText:value=>labels.push(String(value))},{get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)})
-  const before=JSON.stringify(s);g.drawLobby();assert(labels.includes('灶火岭战区'))
+  const before=JSON.stringify(s);g.drawLobby();assert(labels.includes('禾川村战区'))
   for(const id of ['campaign','recruitment','base'])assert.equal(g.buttons.some(b=>b.id===id),false)
   for(const id of ['profile','formation','warehouse','shop','kitchen','tasks','settings','map-base'])assert(g.buttons.some(b=>b.id===id),id)
   assert.equal(labels.includes('选择指挥行动'),false)

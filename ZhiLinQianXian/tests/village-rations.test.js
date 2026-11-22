@@ -33,13 +33,13 @@ test('送粮动员和缺粮慢速报名都不再赠送乡亲物资，不额外�
   const slow=advanceLogistics(s,20);assert.equal(slow.recruited,5);assert.deepEqual(slow.supplies,{});assert.equal(s.villageSuppliesReceived,0)
 })
 
-test('代耕收成全留乡亲，不发物资；保留报名5人和减耗，编制与经验不变',()=>{
+test('代耕按人数分粮；保留报名5人和减耗，编制与经验不变',()=>{
   const s=freshSave();setFormation(s,'squad',7);s.formations[0].trainingXp=420;const units=JSON.stringify(s.formations)
   assert(startFarming(s,'help',0,'millet',[1]).ok);assert.equal(advanceFarming(s,59.9),null)
-  const saved=normalizeSave(JSON.parse(JSON.stringify(s))),result=advanceFarming(saved,.1)
+  const saved=normalizeSave(JSON.parse(JSON.stringify(s))),result=advanceFarming(saved,.1,true,()=>0)
   assert.equal(result.recruited,5);assert.equal(saved.troops,125);assert.equal(saved.recruitedTroops,5);assert.equal(saved.mobilizationDiscounts,7)
-  assert.equal(result.amount,0);assert.deepEqual(result.supplies,{});assert.equal(saved.villageSuppliesReceived,0)
-  for(const id of VILLAGE_SUPPLY_IDS)assert.equal(saved[id],0)
+  assert.equal(result.amount,2);assert.deepEqual(result.supplies,{millet:2});assert.equal(saved.villageSuppliesReceived,0)
+  for(const id of VILLAGE_SUPPLY_IDS)assert.equal(saved[id],id==='millet'?2:0)
   assert.equal(JSON.stringify(saved.formations),units);assert.equal(advanceFarming(saved,60),null)
   assert(startFarming(saved,'help',1).ok);cancelFarming(saved);advanceFarming(saved,60);assert.equal(saved.troops,125)
   const cap=freshSave();cap.troops=9999998;startFarming(cap,'help',1);const limited=advanceFarming(cap,60)
@@ -57,7 +57,7 @@ test('乡亲物资补给接口暂停但保留历史库存，自耕产出为原�
 
 test('取消乡亲补给后整步和逐秒结算一致，界面显示每次需求与补给暂停提示',()=>{
   const a=freshSave();a.millet=25;donateFood(a,'millet',25);startFarming(a,'help',5)
-  const b=structuredClone(a);advanceEconomy(a,300);for(let i=0;i<300;i++)advanceEconomy(b,1);assert.deepEqual(a,b)
+  const b=structuredClone(a);advanceEconomy(a,300,()=>0);for(let i=0;i<300;i++)advanceEconomy(b,1,()=>0);assert.deepEqual(a,b)
   const labels=[],g=Object.create(Game.prototype);g.save=a;g.scene='lobby';g.buttons=[];g.notify=()=>{};g.persist=()=>{}
   g.ctx=new Proxy({fillText:value=>labels.push(String(value))},{get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)})
   g.open('kitchen');g.drawModal();assert(labels.some(label=>label.includes('每次需')&&label.includes('5分钟/次')))

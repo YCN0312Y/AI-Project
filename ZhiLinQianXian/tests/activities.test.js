@@ -1,10 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { freshSave,normalizeSave,setFormation,formation,formationResources,reinforceFormation,mergeFormations,unmergeFormation,removeFormation,settle } from '../js/state.js'
-import { startFarming,advanceFarming,cancelFarming,formationActivity,assignFormations,releaseFormations } from '../js/base.js'
+import {farmTaskAt, startFarming,advanceFarming,cancelFarming,formationActivity,assignFormations,releaseFormations } from '../js/base.js'
 import { campaignDeployment } from '../js/campaign.js'
 import { createTraining,advanceTraining,completeTraining } from '../js/training.js'
 import { Game } from '../js/game.js'
+import {stationTroops} from '../js/villages.js'
+import {MAP_FIELDS} from '../js/world-map.js'
 
 const empty={rifle:0,pistol:0,machinegun:0,sniper:0,mortar:0}
 function game(s=freshSave()){
@@ -45,7 +47,7 @@ test('代耕和自耕均可派无枪合编，按全体人数产出，父子占�
     assert.equal(unmergeFormation(s,root.id).ok,false);assert.equal(setFormation(s,'squad',8,1).ok,false);assert.equal(removeFormation(s,1),false)
     assert.equal(startFarming(s,type,0,'rice',[1]).ok,false)
     const restored=normalizeSave(JSON.parse(JSON.stringify(s)));assert.deepEqual(restored,s);assert.equal(formationActivity(restored,root.id),'farm')
-    const result=advanceFarming(restored,60);assert.equal(result.amount,type==='help'?0:63)
+    const result=advanceFarming(restored,60);assert.equal(result.amount,type==='help'?6:63)
     assert.equal(formationActivity(restored,1),null);assert.equal(formation(restored).unassignedTroops,unassigned+(type==='help'?5:0))
     assert(unmergeFormation(restored,root.id).ok);assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(restored))),restored)
   }
@@ -89,10 +91,11 @@ test('耕作不能用重复/下属/不存在编制冒领产出，散兵耕作仍
 test('无枪创建与编制耕地界面可操作，显示占用并阻止上战场，召回归队后释放',()=>{
   const s=freshSave(),g=game(s);g.editFormation();draw(g);click(g,'formation-unarmed');click(g,'formation-save')
   assert.deepEqual(s.formations[0].weapons,empty)
-  g.open('farm');draw(g);click(g,'farm-source-units');draw(g);click(g,'farm-unit-1');draw(g);click(g,'farm-start')
-  assert.deepEqual(s.farmTask.unitIds,[1]);assert.equal(s.farmTask.workers,7);draw(g)
+  assert(stationTroops(s,MAP_FIELDS[0].villageId,[1]).ok)
+  g.openMapField(MAP_FIELDS[0].id);draw(g);click(g,'farm-unit-1');draw(g);click(g,'farm-start')
+  assert.deepEqual(farmTaskAt(s,MAP_FIELDS[0].id).unitIds,[1]);assert.equal(farmTaskAt(s,MAP_FIELDS[0].id).workers,7);draw(g)
   g.openCampaignDeployment(1);g.toggleDeployment(1);assert.deepEqual(g.deploymentIds,[])
-  g.open('farm');draw(g);click(g,'farm-cancel');assert.equal(s.farmTask,null)
+  g.openMapField(MAP_FIELDS[0].id);draw(g);click(g,'farm-cancel');g.updateLogistics(1);assert.equal(farmTaskAt(s,MAP_FIELDS[0].id),null)
   g.open('formation');draw(g);g.openFormationList('squad');draw(g)
 })
 

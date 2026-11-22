@@ -75,14 +75,14 @@ test('只部署选中的独立部队，合编下属不重复参战，保留各�
   assert.equal(JSON.stringify(s),before);assert.equal(all.units[0].groups[0].cool,undefined)
 })
 
-test('原战役部署仍支持空选保护、跨页、全选、清空、取消及重新部署，村庄不作关卡',()=>{
+test('原战役部署仍支持空选保护、滚动、全选、清空、取消及重新部署，村庄不作关卡',()=>{
   const s=freshSave();s.stage=2;for(let i=0;i<6;i++)assert(setFormation(s,'squad',10).ok)
   const g=game(s),before=JSON.stringify(s)
   g.open('campaign');fitCamera(g.mapCamera);drawModal(g);click(g,'map-site-3');assert.equal(g.modal,'village-station');g.openWorldMap()
   g.start('campaign',3);assert.equal(g.modal,null);assert.equal(g.scene,'world-map')
   g.start('campaign',1);assert.equal(g.modal,'campaign-deploy');assert.equal(g.scene,'world-map');assert.equal(g.battle,undefined)
   drawModal(g);click(g,'deployment-confirm');assert.equal(g.scene,'world-map')
-  click(g,'deployment-unit-1');click(g,'deployment-next');drawModal(g);click(g,'deployment-unit-5')
+  click(g,'deployment-unit-1');g.scrollRoster(g.rosterScroll.max);drawModal(g);click(g,'deployment-unit-5')
   assert.deepEqual(g.deploymentIds,[1,5]);click(g,'deployment-all');assert.equal(g.deploymentIds.length,6)
   click(g,'deployment-clear');assert.equal(g.deploymentIds.length,0)
   click(g,'close');assert.equal(g.modal,null);assert.equal(g.scene,'world-map');assert.equal(JSON.stringify(s),before)
@@ -412,4 +412,15 @@ test('战斗部队卡片跨页可点选，死亡单位不接收命令，暂停�
   g.battle.units[5].hp=0;click(g,'battle-unit-6');assert.equal(g.battle.selectedUnitId,5)
   g.scale=1;g.ox=0;g.oy=0;click(g,'pause');drawModal(g)
   const target=JSON.stringify(g.battle.selectedUnit.target);g.touch({touches:[{clientX:900,clientY:250}]});assert.equal(JSON.stringify(g.battle.selectedUnit.target),target)
+})
+
+test('战斗分遣卡片紧跟原部队，地图上的 Actor 列表顺序保持原样',()=>{
+  const g=game(),units=roster(3,25)
+  units[0].type='platoon';g.battle=new CampaignBattle(1,units)
+  assert(g.battle.selectUnit(1))
+  const result=g.battle.splitSelected('squad',7);assert(result.ok)
+  const actorIds=g.battle.units.map(unit=>unit.id);g.buttons=[];g.drawCampaignRoster()
+  const cardIds=g.buttons.filter(button=>button.id.startsWith('battle-unit-')).map(button=>button.id)
+  assert.deepEqual(cardIds,['battle-unit-1','battle-unit-det-1','battle-unit-2','battle-unit-3'])
+  assert.deepEqual(g.battle.units.map(unit=>unit.id),actorIds)
 })

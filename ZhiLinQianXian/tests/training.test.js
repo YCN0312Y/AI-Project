@@ -145,7 +145,7 @@ test('极度饥饿暂停训练，供餐后从原进度继续，不能在饥饿�
 })
 
 test('训练与耕作、军械生产共用事件时钟，整段与逐秒推进结果一致',()=>{
-  const a=freshSave();a.cookedRice=100;for(let i=0;i<3;i++)setFormation(a,'squad',10)
+  const a=freshSave();a.cookedRice=100;a.materials.ore=10;a.materials.wood=4;for(let i=0;i<3;i++)setFormation(a,'squad',10)
   startTrainingTask(a,1);startFarming(a,'self',0,'rice',[2]);startProduction(a,[3],'pistol')
   const b=structuredClone(a);advanceEconomy(a,300);for(let i=0;i<300;i++)advanceEconomy(b,1)
   assert.deepEqual(a,b);assert.equal(a.trainingSessions,1);assert.equal(a.productionTotals.pistol,2)

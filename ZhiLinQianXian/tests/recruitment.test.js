@@ -92,15 +92,16 @@ test('动员暂停与重新投放保留进度，零兵力可恢复，达到上�
   const food=s.mobilizationFood;advanceLogistics(s,20);assert.equal(s.mobilizationFood,food);assert.equal(mobilizationStatus(s),'兵力已达上限')
 })
 
-test('灶房五种配方按批消耗生食产出熟食，非法批数与原料不足均不改存档',()=>{
-  assert.deepEqual(DISHES.map(dish=>dish.name),['饼','炒米','玉米','熟猪肉','荷包蛋'])
-  const s=freshSave();s.millet=3;s.rice=2;s.corn=1;s.oil=3;s.salt=4;s.pork=1;s.eggs=1
+test('灶房配方按批消耗生食产出熟食，非法批数与原料不足均不改存档',()=>{
+  assert.deepEqual(DISHES.map(dish=>dish.name),['饼','炒米','玉米','熟猪肉','荷包蛋','熟鱼'])
+  const s=freshSave();s.millet=3;s.rice=2;s.corn=1;s.oil=3;s.salt=4;s.pork=1;s.eggs=1;s.fish=2
   assert(cookDish(s,'cookedMillet',3).ok);assert.equal(s.cookedMillet,3);assert.equal(s.millet,0)
   assert(cookDish(s,'cookedRice',2).ok);assert.equal(s.cookedRice,2);assert.equal(s.rice,0)
   assert(cookDish(s,'cookedCorn',1).ok);assert.equal(s.cookedCorn,1);assert.equal(s.corn,0)
   assert(cookDish(s,'cookedPork',1).ok);assert.equal(s.cookedPork,3);assert.equal(s.oil,2);assert.equal(s.salt,3);assert.equal(s.pork,0)
   assert(cookDish(s,'cookedEgg',1).ok);assert.equal(s.cookedEgg,3);assert.equal(s.oil,1);assert.equal(s.salt,2);assert.equal(s.eggs,0)
-  assert.equal(rationStock(s),12);assert.equal(s.dishesCooked,8)
+  assert(cookDish(s,'cookedFish',2).ok);assert.equal(s.cookedFish,2);assert.equal(s.fish,0)
+  assert.equal(rationStock(s),14);assert.equal(s.dishesCooked,10)
   const before=JSON.stringify(s)
   for(const bad of [0,-1,1.5,10001,NaN,Infinity,'2'])assert.equal(cookDish(s,'cookedMillet',bad).ok,false)
   assert.equal(cookDish(s,'cookedMillet',1).ok,false)

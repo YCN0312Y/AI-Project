@@ -1,4 +1,4 @@
-import {MAP_BASE,MAP_SITES,MAP_ROADS,MAP_FIELDS,MAP_REGIONS,MAP_REGION_ROADS} from './world-map.js'
+import {MAP_LOCAL_VILLAGES,MAP_ROADS,MAP_FIELDS,MAP_REGIONS,MAP_REGION_ROADS} from './world-map.js'
 
 const cross=(a,b)=>a.x*b.y-a.y*b.x
 const minus=(a,b)=>({x:a.x-b.x,y:a.y-b.y})
@@ -108,13 +108,14 @@ function enclosedPockets(boundary){
   return pockets
 }
 
-export function controlRegionGeometry(sites,roads=[...MAP_ROADS,...MAP_REGION_ROADS],landmarks=[MAP_BASE,...MAP_SITES,...MAP_REGIONS,...MAP_FIELDS]){
+export function controlRegionGeometry(markers,roads=[...MAP_ROADS,...MAP_REGION_ROADS],landmarks=[...MAP_LOCAL_VILLAGES,...MAP_REGIONS,...MAP_FIELDS]){
+  const sites=markers.map(site=>site.roadId?{...site,id:site.roadId}:site)
   const outline=[[-330,-160],[-80,-280],[270,-190],[430,50],[270,250],[-40,300],[-380,160],[-440,-30]]
   const controlled=new Set(sites.map(site=>site.id)),locations=new Map([...landmarks,...sites].map(site=>[site.id,site]))
   const blockers=landmarks.filter(site=>(site.type==='village'||site.type==='base'||site.strategic)&&!controlled.has(site.id))
   const polygons=sites.map(site=>{
     const points=outline.map(([dx,dy])=>({x:site.x+dx*(site.type==='base'?1:.65),y:site.y+dy*(site.type==='base'?1:.65)}))
-    const fields=site.type==='village'?landmarks.filter(p=>p.villageId===(site.villageId??site.id)&&p.w>0&&p.h>0):[]
+    const fields=site.type==='village'||site.type==='base'?landmarks.filter(p=>p.villageId===(site.villageId??site.id)&&p.w>0&&p.h>0):[]
     // 连同所属田块四周的余量一起围住，田地与村庄之间不留孤立色块。
     for(const field of fields)for(const dx of [-1,1])for(const dy of [-1,1])points.push({x:field.x+dx*(field.w/2+50),y:field.y+dy*(field.h/2+50)})
     return positivePolygon(fields.length?surroundingHull(points):points)

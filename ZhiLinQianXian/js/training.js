@@ -2,7 +2,7 @@ import { WEAPONS } from './weapons.js'
 import { formationRoots, formationName } from './state.js'
 import { formationActivity } from './base.js'
 import {hungerStatus} from './logistics.js'
-import {isVillage,villageOfFormation} from './villages.js'
+import {isVillage,unitVillage} from './villages.js'
 export const trainingTaskAt=(s,villageId=null)=>villageId?s.villageTrainingTasks?.[villageId]:s.trainingTask
 export const trainingTasks=s=>[s.trainingTask,...Object.values(s.villageTrainingTasks||{})].filter(Boolean)
 
@@ -50,7 +50,7 @@ export function trainingStatus(save, id = null) {
 
 export function createTraining(save, id, villageId=null) {
   const unit = formationRoots(save).find(unit => unit.id === id)
-  if(villageId!==null&&(!isVillage(villageId)||villageOfFormation(save,id)!==villageId))return null
+  if(villageId!==null&&(!isVillage(villageId)||unitVillage(save,id)!==villageId))return null
   if (!unit || formationActivity(save,id,villageId!==null) || trainingStatus(save, id).nextXp === null) return null
   return {unitId:id,name:formationName(unit),troops:unit.troops,elapsed:0,duration:trainingDuration(unit.troops),settled:false,
     soldiers:leavesOf(save, id).map(unit => ({id:unit.id,troops:unit.troops})),...(villageId!==null?{villageId}:{})}
@@ -70,7 +70,7 @@ export function completeTraining(save, session) {
   if(save.trainingTask===session)save.trainingTask=null
   if(session.villageId&&save.villageTrainingTasks?.[session.villageId]===session)delete save.villageTrainingTasks[session.villageId]
   const busy=unit&&formationActivity(save,unit.id,!!session.villageId)
-  if (!unit || (busy&&busy!=='training') || (session.villageId&&villageOfFormation(save,unit.id)!==session.villageId) || !current.length || current.length !== session.soldiers.length || current.some(unit => expected.get(unit.id) !== unit.troops)) return null
+  if (!unit || (busy&&busy!=='training') || (session.villageId&&unitVillage(save,unit.id)!==session.villageId) || !current.length || current.length !== session.soldiers.length || current.some(unit => expected.get(unit.id) !== unit.troops)) return null
   const before = trainingStatus(save, unit.id)
   let gained = 0
   for (const soldierUnit of current) {

@@ -1,23 +1,31 @@
+import {fitCamera} from '../js/world-map.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { freshSave,normalizeSave,GOODS,purchase,purchaseWeapon,formation,setFormation,removeFormation,reinforceFormation,MODES,applyWarehouseFoodAdjustment } from '../js/state.js'
 import { WEAPONS } from '../js/weapons.js'
-import { SHOP_LIMITS,SHOP_INTERVAL,syncShop,purchaseQuote,buyStock,shopAvailable } from '../js/shop.js'
-import { startFarming,cancelFarming,advanceFarming } from '../js/base.js'
+import { SHOP_LIMITS,SHOP_INTERVAL,syncShop,purchaseQuote,buyStock,shopAvailable,shopSells } from '../js/shop.js'
+import {farmTaskAt, startFarming,cancelFarming,advanceFarming } from '../js/base.js'
 import { advanceEconomy } from '../js/economy.js'
 import { donateFood,recruitmentFoodCost,advanceLogistics,RATIONS,FOODS,DISHES } from '../js/logistics.js'
 import { Game } from '../js/game.js'
 import { stationTroops } from '../js/villages.js'
 
-test('全部20种商品按指定件数限量，售罄不扣金币或增加库存，武器和物资统一约束',()=>{
-  assert.deepEqual(SHOP_LIMITS,{rifle:50,pistol:30,machinegun:10,sniper:1,mortar:3,rifleAmmo:100,pistolAmmo:70,machinegunAmmo:70,sniperAmmo:20,mortarAmmo:5,grenades:50,bandages:100,medkits:20,millet:100,rice:100,corn:100,pork:30,eggs:30,salt:10,oil:10})
-  for(const item of [...WEAPONS,...GOODS]){
+test('在售商品按指定件数限量，售罄不扣金币或增加库存，武器和物资统一约束',()=>{
+  assert.deepEqual(SHOP_LIMITS,{rifle:50,pistol:30,machinegun:10,sniper:1,mortar:3,rifleAmmo:100,pistolAmmo:70,sniperAmmo:20,mortarAmmo:5,grenades:50,bandages:100,medkits:20,millet:100,rice:100,corn:100,pork:30,eggs:30,salt:10,oil:10})
+  for(const item of [...WEAPONS,...GOODS].filter(item=>shopSells(item.id))){
     const s=freshSave();s.coins=1000000;syncShop(s,1000);let total=0
     const weapon=WEAPONS.includes(item),before=weapon?s.weaponCounts[item.id]:s[item.id]
     while(shopAvailable(s,item.id,1001)>0){const quote=purchaseQuote(s,item,weapon,1001);assert(quote.ok);total+=quote.amount;assert(buyStock(s,item,weapon,1001))}
     assert.equal(total,SHOP_LIMITS[item.id]);assert.equal((weapon?s.weaponCounts[item.id]:s[item.id])-before,total)
     const snapshot=JSON.stringify(s);assert.equal(buyStock(s,item,weapon,1001),false);assert.equal(JSON.stringify(s),snapshot)
   }
+})
+
+test('轻机枪子弹从商城下架和停止补货，已有仓库库存保留',()=>{
+  const s=normalizeSave({coins:1000,machinegunAmmo:33,shopStock:{machinegunAmmo:50},shopNextRestockAt:1000})
+  assert.equal(s.machinegunAmmo,33);assert.equal(s.shopStock.machinegunAmmo,undefined)
+  assert(syncShop(s,1000));assert.equal(shopAvailable(s,'machinegunAmmo',1001),0);assert.equal(s.shopStock.machinegunAmmo,undefined)
+  assert.equal(purchase(s,'machinegunAmmo'),false);assert.equal(s.machinegunAmmo,33);assert.equal(s.coins,1000)
 })
 
 test('物资按单件库存售出最后余数，比例计价向上取整；五分钟前不刷新，到期补满而不叠加',()=>{
@@ -75,7 +83,7 @@ test('饥饿失能暂停耕作并禁止开工，供餐后继续；组合时钟�
   s.cookedRice=12;advanceEconomy(s,30);assert.equal(s.hungerDebt,0);assert.equal(s.farmTask.elapsed,30)
   advanceEconomy(s,30);assert.equal(s.farmTask,null);assert.equal(s.millet,15)
   const a=freshSave();a.cookedRice=100;a.millet=30;donateFood(a,'millet',30);startFarming(a,'help',5)
-  const b=structuredClone(a);advanceEconomy(a,120);for(let i=0;i<120;i++)advanceEconomy(b,1);assert.deepEqual(a,b)
+  const b=structuredClone(a);advanceEconomy(a,120,()=>0);for(let i=0;i<120;i++)advanceEconomy(b,1,()=>0);assert.deepEqual(a,b)
   const blocked=freshSave();blocked.hungerDebt=3;assert.equal(startFarming(blocked,'self',1).ok,false)
 })
 
@@ -98,9 +106,9 @@ test('根据地移除四项事务入口，田地继续从地图点击派人代�
   g.buttons=[];g.drawLobby();click('map-base');draw()
   for(const id of ['base-training','base-farm','base-base-armory','base-base-medical'])assert.equal(g.buttons.some(b=>b.id===id),false)
   setFormation(g.save,'squad',7);stationTroops(g.save,1,[1])
-  click('base-map');assert.equal(g.scene,'world-map');g.buttons=[];g.drawWorldMap();click('map-field-field-1');draw()
-  assert.equal(g.buttons.some(b=>b.id==='farm-self'),false);click('farm-source-reserve');draw();click('farm-start')
-  assert.equal(g.save.farmTask.type,'help');assert.equal(g.save.farmTask.fieldId,'field-1');draw();click('farm-cancel');assert.equal(g.save.farmTask,null)
+  click('base-map');assert.equal(g.scene,'world-map');fitCamera(g.mapCamera);g.buttons=[];g.drawWorldMap();click('map-field-field-1');draw()
+  assert.equal(g.buttons.some(b=>b.id==='farm-self'||b.id==='farm-source-reserve'),false);click('farm-unit-1');draw();click('farm-start')
+  assert.equal(farmTaskAt(g.save,'field-1').type,'help');assert.equal(farmTaskAt(g.save,'field-1').fieldId,'field-1');draw();click('farm-cancel');g.updateLogistics(1);assert.equal(farmTaskAt(g.save,'field-1'),null)
   g.open('shop');draw();assert(labels.some(label=>label.includes('下次补货')))
 })
 

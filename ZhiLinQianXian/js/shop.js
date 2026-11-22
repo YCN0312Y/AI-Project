@@ -1,9 +1,10 @@
 // 商城货源独立于玩家仓库；五分钟补满，不叠加未购买的旧货。
 export const SHOP_INTERVAL=300000
 export const SHOP_LIMITS={rifle:50,pistol:30,machinegun:10,sniper:1,mortar:3,
-  rifleAmmo:100,pistolAmmo:70,machinegunAmmo:70,sniperAmmo:20,mortarAmmo:5,grenades:50,
+  rifleAmmo:100,pistolAmmo:70,sniperAmmo:20,mortarAmmo:5,grenades:50,
   bandages:100,medkits:20,millet:100,rice:100,corn:100,pork:30,eggs:30,salt:10,oil:10}
 export const freshShop=()=>({shopStock:{...SHOP_LIMITS},shopNextRestockAt:0,shopFoodStockVersion:3})
+export const shopSells=id=>Object.prototype.hasOwnProperty.call(SHOP_LIMITS,id)
 export function normalizeShop(raw){
   const clean=freshShop()
   for(const [id,cap] of Object.entries(SHOP_LIMITS))if(Number.isFinite(raw?.shopStock?.[id]))clean.shopStock[id]=Math.max(0,Math.min(cap,Math.floor(raw.shopStock[id])))
@@ -19,11 +20,11 @@ export function syncShop(s,now=Date.now()){
   return true
 }
 export function shopAvailable(s,id,now=Date.now()){
-  if(!(id in SHOP_LIMITS))return 0
+  if(!shopSells(id))return 0
   return s.shopNextRestockAt&&now>=s.shopNextRestockAt?SHOP_LIMITS[id]:(s.shopStock?.[id]??SHOP_LIMITS[id])
 }
 export function purchaseQuote(s,item,weapon=false,now=Date.now()){
-  if(!item||!(item.id in SHOP_LIMITS))return {ok:false,message:'商品不存在',amount:0,cost:0,available:0}
+  if(!item||!shopSells(item.id))return {ok:false,message:'商品不存在',amount:0,cost:0,available:0}
   const available=shopAvailable(s,item.id,now),pack=weapon?1:item.amount,amount=Math.min(pack,available)
   const cost=Math.ceil(item.price*amount/pack),owned=weapon?s.weaponCounts[item.id]:s[item.id]
   const message=!amount?'已售罄，等待五分钟补货':owned+amount>10000000?'仓库库存已达上限':!Number.isFinite(s.coins)||s.coins<cost?'金币不足，请通过战斗和任务获取金币':''

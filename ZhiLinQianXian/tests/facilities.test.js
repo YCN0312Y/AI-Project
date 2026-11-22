@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {freshSave,normalizeSave,setFormation,mergeFormations,unmergeFormation,removeFormation,settle,reinforceFormation,applyBattleLosses} from '../js/state.js'
+import {freshSave,normalizeSave,setFormation,mergeFormations,unmergeFormation,removeFormation,settle,reinforceFormation,applyBattleLosses,splitGarrisonUnit,baseForces} from '../js/state.js'
 import {donateFood,advanceLogistics,recruitmentInterval,mealCost,totalPersonnel,validateDonation} from '../js/logistics.js'
 import {startProduction,startTreatment,recallFacility,advanceFacilities,recordBattleCasualties,finalizeBattleCasualties,WARDS} from '../js/facilities.js'
 import {formationActivity,startFarming,cancelFarming} from '../js/base.js'
@@ -8,10 +8,14 @@ import {advanceEconomy} from '../js/economy.js'
 import {createTraining} from '../js/training.js'
 import {campaignDeployment,CampaignBattle} from '../js/campaign.js'
 import {Game} from '../js/game.js'
-import {stationTroops} from '../js/villages.js'
+import {stationTroops,placeVillageFacility} from '../js/villages.js'
+import {availableWorkforce} from '../js/workforce.js'
+import {MAP_REGIONS} from '../js/world-map.js'
+import {occupyRegion,regionLocalUnits} from '../js/regions.js'
+import {startGarrisonTransfer,advanceMarches,marchOrigin} from '../js/marching.js'
 
 function ready(count=4,troops=10){
-  const s=freshSave();s.coins=1000;s.cookedRice=1000
+  const s=freshSave();s.coins=1000;s.cookedRice=1000;s.materials.ore=100;s.materials.wood=100
   for(let i=0;i<count;i++)assert(setFormation(s,'squad',troops).ok)
   return s
 }
@@ -45,27 +49,112 @@ test('赠金币与食物支持可合并、享受代耕减耗，切换报名速�
   const old=normalizeSave({mobilizationCoins:10,recruitElapsed:7});assert.equal(old.recruitElapsed,7)
 })
 
-test('工厂每5分钟按7人步枪、5人手枪、3人手雷生产，连续轮次产出不占商城限额',()=>{
+test('工厂每分钟按7人步枪、5人手枪、3人手雷生产，连续轮次产出不占商城限额',()=>{
   for(const [product,amount] of [['rifle',1],['pistol',2],['grenades',3]]){
     const s=ready(),before=structuredClone(s.shopStock),coins=s.coins,stock=product==='grenades'?s:s.weaponCounts,initial=stock[product]
-    assert(startProduction(s,[1],product).ok);advanceFacilities(s,299.9);assert.equal(stock[product],initial)
+    assert(startProduction(s,[1],product).ok);advanceFacilities(s,59.9);assert.equal(stock[product],initial)
     assert.equal(advanceFacilities(s,.1).produced[0].amount,amount);assert.equal(stock[product],initial+amount)
-    advanceFacilities(s,600);assert.equal(stock[product],initial+amount*3);assert.equal(s.productionTotals[product],amount*3)
+    advanceFacilities(s,120);assert.equal(stock[product],initial+amount*3);assert.equal(s.productionTotals[product],amount*3)
     assert.deepEqual(s.shopStock,before);assert.equal(s.coins,coins)
   }
+})
+
+test('旧武器项目迁移保留进度，兵工厂可同时派驻三项并单独结束',()=>{
+  const before=ready(3)
+  assert(stationTroops(before,1,[1,2,3]).ok);assert(placeVillageFacility(before,'armory',1).ok)
+  assert(startProduction(before,[1],'rifle').ok);advanceFacilities(before,44)
+  const legacy=structuredClone(before);legacy.armoryTask=legacy.armoryTasks.rifle;legacy.armoryTask.elapsed=220;delete legacy.armoryTasks;delete legacy.armoryClockVersion
+  const s=normalizeSave(legacy);assert.deepEqual(s,before)
+  const g=game(s),labels=[];g.ctx.fillText=value=>labels.push(String(value));g.localVillage=1
+  g.open('base-armory');draw(g);click(g,'factory-product-pistol');draw(g)
+  click(g,'facility-unit-1');assert.deepEqual(g.facilitySelected,[])
+  click(g,'facility-unit-2');draw(g);click(g,'facility-start');draw(g)
+  click(g,'factory-product-grenades');draw(g);click(g,'facility-unit-3');draw(g);click(g,'facility-start');draw(g)
+  assert(['步枪','手枪','手雷','步枪子弹','手枪子弹','● 已派工'].every(name=>labels.includes(name)))
+  assert.deepEqual(advanceFacilities(s,16).produced,[{product:'rifle',amount:1}])
+  assert.equal(s.armoryTasks.pistol.elapsed,16);assert.equal(s.armoryTasks.grenades.elapsed,16)
+  assert.deepEqual(normalizeSave(s),s)
+  click(g,'facility-recall');assert.equal(s.armoryTasks.grenades,undefined)
+  assert.equal(formationActivity(s,3),'garrison');assert.equal(placeVillageFacility(s,'armory',2).ok,false)
+  assert.deepEqual(advanceFacilities(s,44).produced,[{product:'pistol',amount:2}])
+})
+
+test('并行生产按完成时刻消耗共享材料，一次推进与逐秒相同',()=>{
+  const s=ready(2);s.materials={ore:15,wood:7,grass:0}
+  assert(startProduction(s,[2],'pistol').ok);advanceFacilities(s,50)
+  assert(startProduction(s,[1],'rifle').ok)
+  const split=normalizeSave(s)
+  assert.deepEqual(advanceFacilities(s,60).produced,[{product:'pistol',amount:2}])
+  for(let i=0;i<60;i++)advanceFacilities(split,1)
+  assert.deepEqual(s,split);assert.deepEqual(s.materials,{ore:5,wood:3,grass:0})
+  assert.equal(s.armoryTasks.rifle.elapsed,10)
+})
+
+test('步枪子弹和手枪子弹可与现有产线并行，产出按发计入弹药库存',()=>{
+  const s=ready(3),g=game(s),labels=[];g.ctx.fillText=value=>labels.push(String(value))
+  s.materials.ore=200
+  assert(startProduction(s,[1],'rifle').ok)
+  g.open('base-armory');draw(g);click(g,'factory-product-rifleAmmo');draw(g)
+  click(g,'facility-unit-2');draw(g);click(g,'facility-start');draw(g)
+  click(g,'factory-product-pistolAmmo');draw(g);click(g,'facility-unit-3');draw(g);click(g,'facility-start')
+  assert.deepEqual(normalizeSave(s),s)
+  assert.deepEqual(advanceFacilities(s,59).produced,[])
+  assert.deepEqual(advanceFacilities(s,1).produced,[{product:'rifle',amount:1},{product:'rifleAmmo',amount:100},{product:'pistolAmmo',amount:100}])
+  assert.equal(s.rifleAmmo,100);assert.equal(s.pistolAmmo,100)
+  advanceFacilities(s,240)
+  assert.equal(s.rifleAmmo,500);assert.equal(s.pistolAmmo,500);assert.equal(s.productionTotals.rifle,5);assert.equal(s.materials.ore,50)
+  assert.equal(s.weaponCounts.rifleAmmo,undefined);assert.equal(s.productionTotals.pistolAmmo,500)
+  g.open('warehouse');g.inventoryTab='ammo';labels.length=0;draw(g)
+  assert(labels.includes('步枪子弹')&&labels.includes('手枪子弹'))
+})
+
+test('弹药旧工单按比例迁移到60秒，一名驻军也可按整条产线结算',()=>{
+  const s=ready(1),work=[{unitId:1,troops:1,type:'group'}]
+  assert(stationTroops(s,1,[1]).ok);assert(placeVillageFacility(s,'armory',1).ok)
+  assert(startProduction(s,[1],'rifleAmmo',1,work).ok)
+  const old=structuredClone(s);delete old.armoryClockVersion;old.armoryTasks.rifleAmmo.elapsed=225
+  const restored=normalizeSave(old)
+  assert.equal(restored.armoryTasks.rifleAmmo.elapsed,45);assert.deepEqual(normalizeSave(restored),restored)
+  advanceFacilities(restored,14);assert.equal(restored.rifleAmmo,0)
+  advanceFacilities(restored,1);assert.equal(restored.rifleAmmo,100)
+  restored.materials.ore=4
+  assert.deepEqual(advanceFacilities(restored,60).produced,[{product:'rifleAmmo',amount:40}])
+  assert.equal(restored.materials.ore,0)
+})
+
+test('旧版武器工单按比例迁移，已是一分钟的弹药工单不再次缩短',()=>{
+  const s=ready(2)
+  assert(startProduction(s,[1],'rifle').ok);assert(startProduction(s,[2],'pistolAmmo').ok)
+  s.armoryClockVersion=1;s.armoryTasks.rifle.elapsed=225;s.armoryTasks.pistolAmmo.elapsed=45
+  const restored=normalizeSave(s)
+  assert.equal(restored.armoryTasks.rifle.elapsed,45);assert.equal(restored.armoryTasks.pistolAmmo.elapsed,45)
+  assert.deepEqual(normalizeSave(restored),restored)
+  assert.deepEqual(advanceFacilities(restored,15).produced,[{product:'rifle',amount:1},{product:'pistolAmmo',amount:100}])
+})
+
+test('同一驻军可分派不同人员并行生产，超派被拒绝，撤一项只释放该项人员',()=>{
+  const s=ready(1,12),allocation=troops=>[{unitId:1,troops,type:'group'}]
+  assert(stationTroops(s,1,[1]).ok);assert(placeVillageFacility(s,'armory',1).ok)
+  assert(startProduction(s,[1],'rifle',1,allocation(7)).ok)
+  assert(startProduction(s,[1],'pistol',1,allocation(5)).ok)
+  assert.equal(startProduction(s,[1],'grenades',1,allocation(3)).ok,false)
+  assert.equal(availableWorkforce(s,1),0);assert.deepEqual(normalizeSave(s),s)
+  assert(recallFacility(s,'pistol'));assert.equal(availableWorkforce(s,1),5)
+  assert(startProduction(s,[1],'grenades',1,allocation(3)).ok);assert.equal(availableWorkforce(s,1),2)
+  assert.deepEqual(advanceFacilities(s,60).produced,[{product:'rifle',amount:1},{product:'grenades',amount:1}])
 })
 
 test('工厂可派无枪编制及合编，多选按总人数生产，占用全部下属且不能重复派工',()=>{
   const s=ready();for(const unit of s.formations)unit.weapons={rifle:0,pistol:0,machinegun:0,sniper:0,mortar:0}
   const root=mergeFormations(s,[1,2,3]).unit
-  assert(startProduction(s,[root.id,4],'grenades').ok);assert.equal(s.armoryTask.workers,40)
+  assert(startProduction(s,[root.id,4],'grenades').ok);assert.equal(s.armoryTasks.grenades.workers,40)
   assert.equal(formationActivity(s,1),'armory');assert.equal(formationActivity(s,root.id),'armory')
   assert.equal(advanceFacilities(s,300).produced[0].amount,13)
   assert.equal(startTreatment(s,'light',[1]).ok,false);assert.equal(startFarming(s,'help',0,'rice',[root.id]).ok,false)
   assert.equal(createTraining(s,root.id),null);assert.equal(campaignDeployment(s,[root.id]).ok,false)
   assert.equal(unmergeFormation(s,root.id).ok,false);assert.equal(removeFormation(s,4),false)
   assert.equal(reinforceFormation(s,4,0,{},10,true).ok,false)
-  assert(recallFacility(s,'armory'));assert.equal(formationActivity(s,1),null)
+  assert(recallFacility(s,'grenades'));assert.equal(formationActivity(s,1),null)
   assert(unmergeFormation(s,root.id).ok)
 })
 
@@ -77,7 +166,7 @@ test('工厂的非法选择和人数不足不改变存档，库存满额暂停�
   assert.equal(startProduction(s,[1],'rifle').ok,false)
   assert(startProduction(s,[1],'grenades').ok);s.grenades=9999999
   advanceFacilities(s,300);assert.equal(s.grenades,10000000);assert.equal(s.productionTotals.grenades,1)
-  advanceFacilities(s,600);assert.equal(s.armoryTask.elapsed,0);assert.equal(s.grenades,10000000)
+  advanceFacilities(s,600);assert.equal(s.armoryTasks.grenades.elapsed,0);assert.equal(s.grenades,10000000)
   s.grenades-=2;advanceFacilities(s,300);assert.equal(s.grenades,10000000)
 })
 
@@ -170,26 +259,27 @@ test('伤员不占可编兵力但需要口粮，治疗后回到未编人员，�
 })
 
 test('无患者医疗部待命不白算进度，极度饥饿暂停工厂和医疗，供餐后继续',()=>{
-  const s=ready();startProduction(s,[1],'rifle');startTreatment(s,'light',[2]);advanceFacilities(s,90,true,()=>1)
-  assert.equal(s.armoryTask.elapsed,90);assert.equal(s.medicalTasks.light.elapsed,0)
+  const s=ready();startProduction(s,[1],'rifle');startTreatment(s,'light',[2]);advanceFacilities(s,30,true,()=>1)
+  assert.equal(s.armoryTasks.rifle.elapsed,30);assert.equal(s.medicalTasks.light.elapsed,0)
   wound(s,10,0);s.hungerDebt=3;s.cookedRice=0;advanceEconomy(s,60,()=>1)
-  assert.equal(s.armoryTask.elapsed,90);assert.equal(s.medicalTasks.light.elapsed,0)
-  s.cookedRice=20;advanceEconomy(s,30,()=>1);assert.equal(s.armoryTask.elapsed,120);assert.equal(s.wounded.light,5)
+  assert.equal(s.armoryTasks.rifle.elapsed,30);assert.equal(s.medicalTasks.light.elapsed,0)
+  s.cookedRice=20;advanceEconomy(s,30,()=>1);assert.equal(s.productionTotals.rifle,1);assert.equal(s.wounded.light,5)
 })
 
 test('工厂、轻重医疗可并行，整段和逐秒结算一致，前台时钟准确保存',()=>{
   const a=ready();a.rice=1000;wound(a,20,4)
   startProduction(a,[1],'rifle');startTreatment(a,'light',[2]);startTreatment(a,'heavy',[3])
   const b=structuredClone(a);advanceEconomy(a,600,()=>1);for(let i=0;i<600;i++)advanceEconomy(b,1,()=>1)
-  assert.deepEqual(a,b);assert.equal(a.productionTotals.rifle,2);assert.equal(a.recoveredTroops,22)
+  assert.deepEqual(a,b);assert.equal(a.productionTotals.rifle,10);assert.equal(a.recoveredTroops,22)
   assert.deepEqual(a.heavyTreatmentStages,[0,0,2]);assert.deepEqual(normalizeSave(a),a)
 })
 
 test('保存恢复拒绝任务共享部队、错误人数、下属ID、越界计时，不重复占用或伪造伤员',()=>{
   const s=ready();startProduction(s,[1],'rifle');wound(s,5,4);startTreatment(s,'heavy',[2]);advanceFacilities(s,125,true,()=>1)
   const raw=structuredClone(s);raw.medicalTasks.light={unitIds:[1],workers:10,elapsed:10,ward:'light'}
-  const restored=normalizeSave(raw);assert(restored.armoryTask);assert.equal(restored.medicalTasks.light,null);assert(restored.medicalTasks.heavy)
-  for(const invalid of [{...raw.armoryTask,workers:99},{...raw.armoryTask,elapsed:300},{...raw.armoryTask,unitIds:[1,1]}])assert.equal(normalizeSave({...s,armoryTask:invalid}).armoryTask,null)
+  const restored=normalizeSave(raw);assert(restored.armoryTasks.rifle);assert.equal(restored.medicalTasks.light,null);assert(restored.medicalTasks.heavy)
+  const task=raw.armoryTasks.rifle
+  for(const invalid of [{...task,workers:99},{...task,elapsed:60},{...task,unitIds:[1,1]}])assert.equal(normalizeSave({...s,armoryTasks:{rifle:invalid}}).armoryTasks.rifle,undefined)
   const bad=normalizeSave({troops:9999999,wounded:{light:20,heavy:40},heavyTreatmentStages:[100,-1,NaN]})
   assert.deepEqual(bad.wounded,{light:1,heavy:0});assert.deepEqual(bad.heavyTreatmentStages,[0,0,0])
 })
@@ -200,7 +290,7 @@ test('工厂、医疗、耕作、出战与训练互斥，其他空闲部队仍�
   const g=game(s);g.start('campaign',1,[3]);assert.equal(startTreatment(s,'heavy',[3]).ok,false)
   assert(startProduction(s,[4],'pistol').ok);assert.equal(campaignDeployment(s,[4]).ok,false)
   assert(recallFacility(s,'light'));assert.equal(formationActivity(s,2),null);assert(startTreatment(s,'heavy',[2]).ok)
-  cancelFarming(s);assert.equal(startProduction(s,[1],'rifle').ok,false)
+  cancelFarming(s);assert(startProduction(s,[1],'rifle').ok)
 })
 
 test('新增金币赠送、生产、医疗派驻和召回界面可操作，按钮不超出面板，旧战斗按钮消失',()=>{
@@ -209,10 +299,62 @@ test('新增金币赠送、生产、医疗派驻和召回界面可操作，按�
   g.open('recruitment');draw(g);click(g,'recruit-food-coins');draw(g);click(g,'recruit-confirm')
   assert.equal(s.mobilizationCoins,20);assert.equal(s.coins,980)
   g.openWorldMap();g.open('base-armory');draw(g);click(g,'factory-product-pistol');click(g,'facility-unit-1');draw(g);click(g,'facility-start')
-  assert.equal(s.armoryTask.product,'pistol');draw(g);click(g,'facility-recall');assert.equal(s.armoryTask,null)
+  assert.equal(s.armoryTasks.pistol.product,'pistol');draw(g);click(g,'facility-recall');assert.deepEqual(s.armoryTasks,{})
   wound(s,10,2);g.open('base-medical');draw(g);click(g,'medical-ward-heavy');draw(g);click(g,'facility-unit-2');draw(g);click(g,'facility-start')
   assert.deepEqual(s.medicalTasks.heavy.unitIds,[2]);draw(g);click(g,'facility-recall');assert.equal(s.medicalTasks.heavy,null)
   g.start('campaign',1,[1]);g.buttons=[];g.drawCampaignRoster();assert.equal(g.buttons.some(b=>['heal','strike'].includes(b.id)),false)
   g.open('pause');draw(g);assert.equal(g.buttons.some(b=>b.id==='battle-kitchen'),false)
   assert.equal(typeof g.useArtillery,'undefined');assert.equal(typeof g.useMedical,'undefined');assert(saves>=5)
+})
+
+test('本村驻军分出的下级部队可派往本村兵工厂和医疗部（含部分派遣与刷新恢复）',()=>{
+  const s=freshSave();s.coins=1000;s.cookedRice=1000;assert(setFormation(s,'platoon',40).ok)
+  assert(stationTroops(s,2,[1]).ok)
+  const squad=splitGarrisonUnit(s,1,'squad',10).unit
+  assert(placeVillageFacility(s,'armory',2).ok)
+  const g=game(s);g.localVillage=2;g.open('base-armory');draw(g)
+  assert(g.buttons.some(b=>b.id==='facility-unit-'+squad.id))
+  click(g,'facility-unit-'+squad.id);draw(g);click(g,'facility-start')
+  assert.deepEqual(s.armoryTasks.rifle.unitIds,[squad.id])
+  const restored=normalizeSave(structuredClone(s));assert.deepEqual(restored.armoryTasks.rifle.unitIds,[squad.id])
+  g.open('village');g.villageId=2;const labels=[];g.ctx.fillText=v=>labels.push(String(v));draw(g)
+  assert(labels.includes('1排-1班'));assert(labels.includes('军械生产中'))
+  assert(recallFacility(s,'rifle'));assert.equal(formationActivity(s,squad.id),null)
+  assert(placeVillageFacility(s,'medical',3).ok);assert.equal(startTreatment(s,'light',[squad.id],3).ok,false)
+  assert(placeVillageFacility(s,'armory',1).ok)
+  assert(placeVillageFacility(s,'medical',2).ok)
+  g.localVillage=2;g.open('base-medical');draw(g)
+  assert(g.buttons.some(b=>b.id==='facility-unit-'+squad.id))
+  click(g,'facility-detach');draw(g)
+  assert(g.buttons.some(b=>b.id==='work-root-'+squad.id))
+  assert(startTreatment(s,'light',[squad.id],2,[{unitId:squad.id,troops:4,type:'group'}]).ok)
+  assert.deepEqual(normalizeSave(structuredClone(s)).medicalTasks.light.unitIds,[squad.id])
+})
+
+test('分别结束连队两个排的生产时，各自从工厂驻地返回连队所在据点待命',()=>{
+  const s=ready(0),g=game(s),site=MAP_REGIONS.find(site=>site.type==='mountain'&&!site.enemyTroops)
+  assert(setFormation(s,'company',120).ok);assert(occupyRegion(s,site.id,[1]).ok)
+  const first=splitGarrisonUnit(s,1,'platoon',30).unit,second=splitGarrisonUnit(s,1,'platoon',30).unit
+  assert(stationTroops(s,2,[first.id,second.id]).ok);assert(placeVillageFacility(s,'armory',2).ok)
+  assert(startProduction(s,[first.id],'rifle').ok);assert(startProduction(s,[second.id],'pistol').ok)
+  advanceFacilities(s,60);const stock=structuredClone(s.weaponCounts)
+  g.localVillage=2;g.open('base-armory');draw(g);click(g,'facility-recall')
+  assert.equal(marchOrigin(s,first.id),site.id);assert.deepEqual(s.garrisons[2],[second.id]);assert(s.armoryTasks.pistol)
+  draw(g);click(g,'factory-product-pistol');draw(g);click(g,'facility-recall')
+  assert.equal(s.garrisons[2],undefined);assert.equal(marchOrigin(s,second.id),site.id)
+  assert.deepEqual(regionLocalUnits(s,site.id).map(unit=>unit.id),[1,first.id,second.id])
+  assert.equal(baseForces(s).troops,0);assert.equal(s.formations[0].troops,60)
+  assert.deepEqual(s.weaponCounts,stock);assert.deepEqual(normalizeSave(s),s)
+})
+
+test('连队正在转驻时，结束生产的分队先在工厂所在地待命，连队抵达后同步归队',()=>{
+  let s=ready(0);assert(setFormation(s,'company',120).ok);assert(stationTroops(s,1,[1]).ok)
+  const branch=splitGarrisonUnit(s,1,'platoon',30).unit
+  assert(stationTroops(s,2,[branch.id]).ok);assert(placeVillageFacility(s,'armory',2).ok)
+  assert(startProduction(s,[branch.id],'rifle').ok)
+  assert(startGarrisonTransfer(s,1,1,3).ok)
+  assert(recallFacility(s,'rifle'));assert.equal(marchOrigin(s,branch.id),2);assert.equal(s.garrisons[2],undefined)
+  s=normalizeSave(s);assert.equal(marchOrigin(s,branch.id),2)
+  assert.equal(advanceMarches(s,10000).length,1)
+  assert.deepEqual(s.garrisons[3],[1]);assert.equal(marchOrigin(s,branch.id),3)
 })

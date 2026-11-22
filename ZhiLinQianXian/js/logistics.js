@@ -12,6 +12,8 @@ export const FOODS = [
   {id:'oil',name:'油',price:24,icon:'oil'},
   {id:'eggs',name:'鸡蛋',price:20,icon:'egg'},
 ].map(food=>({...food,category:'logistics',amount:10,unit:'份',desc:'送给乡亲 / 灶房食材 · 每份计 1 份补给'}))
+export const FISH={id:'fish',name:'鲜鱼',category:'logistics',icon:'fish',unit:'份'}
+const RAW_FOODS=[...FOODS,FISH]
 // 每「批」按 input 消耗生食，产出 output 份熟食；组合菜不损耗份数。
 export const DISHES = [
   {id:'cookedMillet',name:'饼',icon:'grain',input:{millet:1},output:1,recipe:'谷子 1 份',autoCook:true},
@@ -19,6 +21,7 @@ export const DISHES = [
   {id:'cookedCorn',name:'玉米',icon:'corn',input:{corn:1},output:1,recipe:'苞谷 1 份',autoCook:true},
   {id:'cookedPork',name:'熟猪肉',icon:'meat',input:{oil:1,salt:1,pork:1},output:3,recipe:'油 1 + 食盐 1 + 猪肉 1',autoCook:false},
   {id:'cookedEgg',name:'荷包蛋',icon:'egg',input:{oil:1,eggs:1,salt:1},output:3,recipe:'油 1 + 鸡蛋 1 + 食盐 1',autoCook:false},
+  {id:'cookedFish',name:'熟鱼',icon:'fish',input:{fish:1},output:1,recipe:'鲜鱼 1 份',autoCook:false},
 ].map(dish=>({...dish,desc:`${dish.recipe} → ${dish.name} ${dish.output} 份`}))
 export const RECRUITMENT={interval:10,starvedInterval:20,batch:5,foodPerBatch:5,min:1,max:10000,maxBatches:10000,maxStreak:2,troopLimit:10000000}
 export const RATIONS={interval:300,soldiersPerPortion:10,version:2}
@@ -35,7 +38,7 @@ export function hungerStatus(s){
   return {debt,disabled,damageMultiplier:disabled ? .5 : 1,intervalMultiplier:disabled?1.5:1,speedMultiplier:disabled ? .7 : 1,label:disabled?'极度饥饿':debt>=HUNGER.severeAt?'严重饥饿':debt>0?'饥饿':'补给正常'}
 }
 export const freshLogistics=()=>({
-  ...Object.fromEntries(FOODS.map(food=>[food.id,0])),
+  ...Object.fromEntries(RAW_FOODS.map(food=>[food.id,0])),
   ...Object.fromEntries(DISHES.map(dish=>[dish.id,0])),
   mobilizationFood:0,mobilizationCoins:0,mobilizationActive:false,recruitElapsed:0,mealElapsed:0,rationClockVersion:RATIONS.version,autoCooking:true,
   villageMobilization:{},villageMobilizationVersion:1,
@@ -43,7 +46,7 @@ export const freshLogistics=()=>({
   villageSupplyCursor:0,villageSuppliesReceived:0,lastVillageSupplies:{},
   lastMealShortage:0,lastMealServed:0,foodConsumed:0,dishesCooked:0,lastDonationFood:null,donationStreak:0,hungerDebt:0,
 })
-export const foodStock=s=>FOODS.reduce((sum,food)=>sum+(s[food.id]||0),0)
+export const foodStock=s=>RAW_FOODS.reduce((sum,food)=>sum+(s[food.id]||0),0)
 export const rationStock=s=>DISHES.reduce((sum,dish)=>sum+(s[dish.id]||0),0)
 export const totalPersonnel=s=>s.troops+(s.wounded?.light||0)+(s.wounded?.heavy||0)+(s.pendingBattleCasualties?.light||0)+(s.pendingBattleCasualties?.heavy||0)
 export const mealCost=s=>Math.ceil(totalPersonnel(s)/RATIONS.soldiersPerPortion)
@@ -85,7 +88,7 @@ export function validateCooking(s,id,batches){
   if(!dish)return {ok:false,message:'请选择要做的饭'}
   if(!Number.isInteger(batches)||batches<1||batches>RECRUITMENT.maxBatches)return {ok:false,message:`每次做饭须为 1—${RECRUITMENT.maxBatches} 批`}
   for(const [raw,count] of Object.entries(dish.input)){
-    const need=count*batches,name=FOODS.find(food=>food.id===raw)?.name||raw
+    const need=count*batches,name=RAW_FOODS.find(food=>food.id===raw)?.name||raw
     if((s[raw]||0)<need)return {ok:false,message:`${name}不足，需要 ${need} 份，仓库仅有 ${s[raw]||0} 份`}
   }
   if((s[dish.id]||0)+dish.output*batches>10000000)return {ok:false,message:'熟食库存已达上限'}
@@ -100,7 +103,7 @@ export function cookDish(s,id,batches,{serve=true}={}){
   result.feeding=serve?feedHungryTroops(s):{meals:0,consumed:0,shortage:0}
   return result
 }
-// 只补本餐熟食缺口，随机制作原料够用的主食；肉、蛋只允许手工做。
+// 只补本餐熟食缺口，随机制作原料够用的主食。
 export function autoCookMeal(s,random=Math.random,{force=false,target=mealCost(s)}={}){
   const cooked={}
   if(s.autoCooking===false&&!force)return cooked

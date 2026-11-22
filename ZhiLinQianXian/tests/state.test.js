@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { GOODS,FORMATION_TYPES,freshSave,normalizeSave,rank,rankProgress,formation,formationName,formationRoots,formationParent,previewFormationMerge,mergeFormations,unmergeFormation,formationResources,autoFormationWeapons,setFormation,removeFormation,purchase,purchaseWeapon,equipWeapon,claim,settle } from '../js/state.js'
+import { GOODS,FORMATION_TYPES,freshSave,normalizeSave,rank,rankProgress,formation,formationName,formationRoots,formationParent,lineageRows,splitGarrisonUnit,previewFormationMerge,mergeFormations,unmergeFormation,formationResources,autoFormationWeapons,setFormation,removeFormation,purchase,purchaseWeapon,equipWeapon,claim,settle } from '../js/state.js'
 import { WEAPONS } from '../js/weapons.js'
+import {stationTroops} from '../js/villages.js'
 import { Game } from '../js/game.js'
 import { Battle } from '../js/battle.js'
 test('shop cannot spend below zero; food inventory persists without buying manpower',()=>{
@@ -89,7 +90,7 @@ test('旧存档保留累计军功并重新判职，战斗军功即时晋升且�
 
 test('商城各类物资按份数入库，余额不足不扣款，刷新后保留',()=>{
   const s=freshSave();s.coins=5000
-  for(const item of GOODS){
+  for(const item of GOODS.filter(item=>item.id!=='machinegunAmmo')){
     const before=s[item.id],coins=s.coins
     assert(purchase(s,item.id));assert.equal(s[item.id],before+item.amount);assert.equal(s.coins,coins-item.price)
   }
@@ -128,7 +129,7 @@ test('商城提供购买入口，仓库展示库存，按钮位于面板内',()=
   assert.equal(g.save.weaponCounts.pistol,2);g.open('shop')
   for(const category of ['ammo','medical']){
     g.inventoryTab=category;draw()
-    for(const item of GOODS.filter(v=>v.category===category))assert(g.buttons.some(b=>b.id==='buy-'+item.id))
+    for(const item of GOODS.filter(v=>v.category===category))assert.equal(g.buttons.some(b=>b.id==='buy-'+item.id),item.id!=='machinegunAmmo')
   }
   g.inventoryTab='ammo';draw();g.buttons.find(b=>b.id==='buy-rifleAmmo').fn();assert.equal(g.save.rifleAmmo,30)
   g.open('warehouse');g.inventoryTab='ammo';draw();assert.equal(g.buttons.some(b=>b.id.startsWith('buy-')),false)
@@ -364,6 +365,50 @@ test('旧编号迁移按类型分配，重复或非法显示编号得到修复�
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(restored))),restored)
   legacy.formations[0].number=1;legacy.formations[1].number=1;legacy.formations[2].number=-7
   assert.deepEqual(normalizeSave(legacy).formations.map(formationName),['1班','2班','3班','1排'])
+})
+
+test('各排分出的班各自从1编号，独立班另算，交替分兵和刷新都保持顺序',()=>{
+  let s=freshSave()
+  assert(setFormation(s,'platoon',30).ok);assert(setFormation(s,'platoon',30).ok);assert(setFormation(s,'squad',10).ok)
+  assert(stationTroops(s,1,[1,2]).ok)
+  for(const id of [1,2])assert(splitGarrisonUnit(s,id,'squad',7).ok)
+  s=normalizeSave(s)
+  for(const id of [1,2])assert(splitGarrisonUnit(s,id,'squad',7).ok)
+  assert(setFormation(s,'squad',10).ok)
+  const names=['1排','2排','1班','1排-1班','2排-1班','1排-2班','2排-2班','2班']
+  assert.deepEqual(s.formations.map(formationName),names)
+  assert.deepEqual(normalizeSave(s),s)
+  const old=structuredClone(s);delete old.formationNumberVersion
+  old.formations.filter(unit=>unit.splitParent!==undefined).forEach((unit,index)=>{unit.number=index+3})
+  assert.deepEqual(normalizeSave(old),s)
+  assert(removeFormation(s,4));const replacement=splitGarrisonUnit(s,1,'squad',7).unit
+  assert.equal(formationName(replacement),'1排-1班')
+  const children=lineageRows(s.formations).filter(row=>row.unit.splitParent===1)
+  assert.deepEqual(children.map(({unit})=>formationName(unit)),['1排-1班','1排-2班'])
+})
+
+test('旧存档重新编号时同步更新多级分队的上级称呼',()=>{
+  const s=freshSave()
+  assert(setFormation(s,'company',100).ok);assert(stationTroops(s,1,[1]).ok)
+  const platoon=splitGarrisonUnit(s,1,'platoon',32).unit
+  assert(stationTroops(s,2,[platoon.id]).ok);assert(splitGarrisonUnit(s,platoon.id,'squad',7).ok)
+  const old=structuredClone(s);delete old.formationNumberVersion
+  old.formations[1].number=4;old.formations[2].number=8;old.formations[2].splitPrefix='1连-4排'
+  assert.deepEqual(normalizeSave(old),s)
+  assert.equal(formationName(normalizeSave(old).formations[2]),'1连-1排-1班')
+})
+
+test('旧存档已有分队合编时保留实际下属与兵力，不允许新建同样的合编',()=>{
+  const s=freshSave()
+  assert(setFormation(s,'platoon',30).ok);assert(setFormation(s,'squad',10).ok);assert(setFormation(s,'squad',10).ok)
+  assert(stationTroops(s,1,[1]).ok)
+  const branch=splitGarrisonUnit(s,1,'squad',7).unit
+  const children=[2,3,branch.id]
+  assert.equal(mergeFormations(s,children).ok,false)
+  s.formations.push({id:5,number:2,type:'platoon',children,troops:27,weapons:{...branch.weapons,rifle:27}})
+  const restored=normalizeSave(s)
+  assert.deepEqual(formationParent(restored,branch.id).children,children)
+  assert.equal(formation(restored).assignedTroops,50)
 })
 
 test('编制总览按类型进入，列表仅显示概要，逐层查看和路径返回不改变编制数据',()=>{

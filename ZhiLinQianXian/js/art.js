@@ -51,8 +51,10 @@ export function commandMap(c,x,y,w,h,labels=true){
   }
   c.restore();brackets(c,x,y,w,h,C.olive)
 }
-export function baseRegionMap(c,w,h,bounds={x:0,y:0,w,h},landmarks=[],territories=landmarks.filter(p=>p.type==='base')){
+export function baseRegionMap(c,w,h,bounds={x:0,y:0,w,h},landmarks=[],territories=landmarks.filter(p=>p.type==='base'),view=bounds){
   const right=bounds.x+bounds.w,bottom=bounds.y+bounds.h
+  const viewLeft=Math.max(bounds.x,view.x-280),viewTop=Math.max(bounds.y,view.y-280)
+  const viewRight=Math.min(right,view.x+view.w+280),viewBottom=Math.min(bottom,view.y+view.h+280)
   box(c,bounds.x,bounds.y,bounds.w,bounds.h,'#24352a',0,C.line)
   poly(c,[[bounds.x,bounds.y],[1000,bounds.y],[830,80],[250,180],[bounds.x,0]],'#2c402f')
   poly(c,[[2400,bounds.y],[right,bounds.y],[right,700],[3280,480],[3000,100]],'#2d4030')
@@ -63,17 +65,21 @@ export function baseRegionMap(c,w,h,bounds={x:0,y:0,w,h},landmarks=[],territorie
   poly(c,[[2140,0],[w,0],[w,780],[2700,680],[2420,380]],'#2d402f')
   poly(c,[[0,1450],[650,1330],[1210,1560],[1340,h],[0,h]],'#2c3d2c')
   poly(c,[[2230,1520],[2710,1350],[w,1460],[w,h],[2100,h]],'#2b3c2e')
-  for(let x=Math.ceil(bounds.x/100)*100;x<=right;x+=100)line(c,x,bounds.y,x,bottom,'#304236')
-  for(let y=Math.ceil(bounds.y/100)*100;y<=bottom;y+=100)line(c,bounds.x,y,right,y,'#304236')
+  for(let x=Math.ceil(viewLeft/100)*100;x<=viewRight;x+=100)line(c,x,viewTop,x,viewBottom,'#304236')
+  for(let y=Math.ceil(viewTop/100)*100;y<=viewBottom;y+=100)line(c,viewLeft,y,viewRight,y,'#304236')
   // 控制区在地面层绘制，随后再绘制植被、山脉、田地、道路和点位。
   controlRegions(c,territories,landmarks)
   for(const [x,y] of [[380,300],[480,360],[630,250],[2570,310],[2680,400],[2810,330],[450,1580],[590,1650],[2660,1600],[2820,1550],[-250,250],[-120,330],[-210,1190],[-90,1340],[620,-100],[820,-140],[2680,-80],[2950,-120],[3350,330],[3440,440],[3410,1830],[3260,1930],[670,1980],[820,2040]]){
     poly(c,[[x,y-35],[x-24,y+13],[x+24,y+13]],'#536248');line(c,x,y+9,x,y+28,'#748060',5)
   }
-  for(let row=0,y=bounds.y+140;y<bottom-60;row++,y+=280)for(let col=0,x=bounds.x+100;x<right-50;col++,x+=320){
+  // 固定地形网格的起点，让扩图和拖动画面不会移动原有景物。
+  const terrainX=-2300,terrainY=-1285
+  const firstRow=Math.ceil((Math.max(viewTop,bounds.y+140)-terrainY)/280)
+  const firstCol=Math.ceil((Math.max(viewLeft,bounds.x+100)-terrainX)/320)
+  for(let row=firstRow,y=terrainY+row*280;y<Math.min(bottom-60,viewBottom);row++,y+=280)for(let col=firstCol,x=terrainX+col*320;x<Math.min(right-50,viewRight);col++,x+=320){
     const px=x+Math.sin(row*7+col*3)*60,py=y+Math.cos(col*5+row*2)*45
     if(landmarks.some(p=>Math.hypot(p.x-px,p.y-py)<190))continue
-    const kind=(row*11+col*7)%5
+    const kind=((row*11+col*7)%5+5)%5
     if(kind===0){
       for(let peak=0;peak<2;peak++){const mx=px+peak*49,my=py+peak*13;poly(c,[[mx-43,my+29],[mx,my-48],[mx+50,my+29]],'#818780');poly(c,[[mx,my-48],[mx+12,my+29],[mx+50,my+29]],'#555d59');line(c,mx-10,my-29,mx,my-48,'#bcc1b9',2)}
     }else if(kind<=2){
@@ -82,7 +88,7 @@ export function baseRegionMap(c,w,h,bounds={x:0,y:0,w,h},landmarks=[],territorie
       for(let bush=0;bush<4;bush++){const bx=px+bush*19-28,by=py+(bush%2)*8;circle(c,bx,by,13,'#4b6940');circle(c,bx+6,by-5,9,'#5c7849')}
     }else for(let stem=0;stem<7;stem++){const gx=px+stem*10-30,gy=py+(stem%3)*6;line(c,gx,gy,gx-4,gy-13,'#71845a',2);line(c,gx,gy,gx+5,gy-10,'#5e794f',2)}
   }
-  for(const site of landmarks.filter(p=>p.strategic)){
+  for(const site of landmarks.filter(p=>p.strategic&&p.x>=viewLeft&&p.x<=viewRight&&p.y>=viewTop&&p.y<=viewBottom)){
     if(site.type==='mountain')for(const [dx,dy,size] of [[-75,25,85],[20,-15,115],[100,35,65]]){
       const x=site.x+dx,y=site.y+dy;poly(c,[[x-size*.6,y+size*.4],[x,y-size],[x+size*.65,y+size*.4]],'#818780');poly(c,[[x,y-size],[x+size*.15,y+size*.4],[x+size*.65,y+size*.4]],'#555d59')
     }else if(site.type==='forest')for(const [dx,dy] of [[-110,-50],[-40,-95],[50,-70],[110,-10],[-85,65],[30,85]])tree(c,site.x+dx,site.y+dy,45,'#4d7247')
@@ -120,9 +126,9 @@ export function controlRegions(c,sites,landmarks){
   const base=sites.find(site=>site.type==='base')
   if(base)text(c,'根据地区域',base.x,base.y+235,23,'#d88a78',600,'center')
 }
-export function villageFields(c,fields,activeField){
+export function villageFields(c,fields,activeFields){
   for(const field of fields){
-    const x=field.x-field.w/2,y=field.y-field.h/2,working=field.id===activeField
+    const x=field.x-field.w/2,y=field.y-field.h/2,working=activeFields.has(field.id)
     box(c,x,y,field.w,field.h,working?'#5b6534':'#465431',3,working?C.gold:'#7d8c50')
     for(let row=12;row<field.h-5;row+=18){
       line(c,x+8,y+row,x+field.w-8,y+row,working?'#9b9d57':'#7c8d4e',3)
@@ -130,13 +136,21 @@ export function villageFields(c,fields,activeField){
     }
   }
 }
-export function regionRoads(c,roads,location){
+export function regionRoads(c,roads,location,view){
+  const visible=roads.flatMap(road=>{
+    const from=location(road.from),to=road.end||location(road.to)
+    if(view){
+      const [x1,y1,x2,y2]=road.controls,margin=10
+      if(Math.max(from.x,to.x,x1,x2)<view.x-margin||Math.min(from.x,to.x,x1,x2)>view.x+view.w+margin||
+         Math.max(from.y,to.y,y1,y2)<view.y-margin||Math.min(from.y,to.y,y1,y2)>view.y+view.h+margin)return []
+    }
+    return [{road,from,to}]
+  })
   c.save();c.lineCap='round';c.lineJoin='round'
   // 分层绘制全部道路，让乡道交汇处保持连续。
   for(const [color,width] of [['#18261c',19],['#766d4f',9],['#a0966c',2]]){
     c.strokeStyle=color;c.lineWidth=width
-    for(const road of roads){
-      const from=location(road.from),to=road.end||location(road.to)
+    for(const {road,from,to} of visible){
       c.lineWidth=road.outskirts?width*.7:width
       c.beginPath();c.moveTo(from.x,from.y)
       c.bezierCurveTo(...road.controls,to.x,to.y);c.stroke()
@@ -171,6 +185,10 @@ export function icon(c,type,x,y,size=28,color=C.ink){
   else if(type==='mountain'){path([[-13,10],[-3,-12],[7,10],[-13,10]]);path([[2,-1],[8,-8],[14,10],[7,10]]);path([[-7,-3],[-3,-1],[0,-4]])}
   else if(type==='forest'){for(const dx of [-7,6]){path([[dx,12],[dx,5]]);path([[dx,-12],[dx-6,0],[dx-3,0],[dx-8,7],[dx+8,7],[dx+3,0],[dx+6,0],[dx,-12]])}}
   else if(type==='river'){for(const dy of [-8,0,8]){c.beginPath();c.moveTo(-13,dy);c.bezierCurveTo(-5,dy-7,5,dy+7,13,dy);c.stroke()}}
+  else if(type==='fish'){
+    c.beginPath();c.moveTo(-8,0);c.bezierCurveTo(-2,-9,8,-9,13,0);c.bezierCurveTo(8,9,-2,9,-8,0);c.stroke()
+    path([[-8,0],[-14,-6],[-14,6],[-8,0]]);circle(c,8,-2,1.3,color)
+  }
   else if(type==='coin'){c.beginPath();c.arc(0,0,11,0,Math.PI*2);c.stroke();text(c,'G',0,1,14,color,700,'center')}
   else if(type==='grain'){path([[-8,12],[-9,-3],[-5,-7],[5,-7],[9,-3],[8,12],[-8,12]]);path([[-6,-7],[-8,-12],[7,-12],[5,-7]]);path([[0,7],[0,-3]]);path([[0,2],[-4,-1]]);path([[0,5],[4,1]])}
   else if(type==='corn'){c.beginPath();c.ellipse(0,-1,6,12,.3,0,Math.PI*2);c.stroke();path([[-9,4],[0,12],[10,1]]);for(const y of [-7,-2,3])line(c,-3,y,4,y,color)}

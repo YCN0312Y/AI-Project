@@ -22,14 +22,15 @@ export function enemyUnitSpec(level,wave,index){
 }
 
 // 每个独立编制对应一个战斗单位，合编部队的下属只汇总一次。
-export function campaignDeployment(save, ids) {
+export function campaignDeployment(save, ids, ignoreGarrison=false) {
   if (!Array.isArray(ids) || !ids.length) return {ok:false,message:'请至少选择一支出战部队'}
   if (new Set(ids).size !== ids.length) return {ok:false,message:'同一支部队不能重复派遣'}
   const roots = formationRoots(save), units = []
   for (const id of ids) {
     const unit = roots.find(unit => unit.id === id)
     if (!unit) return {ok:false,message:'只能派遣独立部队，请重新选择'}
-    if(formationActivity(save,id))return {ok:false,message:`${formationName(unit)}${activityLabel(formationActivity(save,id))}，归队后才能出战`}
+    const activity=formationActivity(save,id,ignoreGarrison)
+    if(activity)return {ok:false,message:`${formationName(unit)}${activityLabel(activity)}，归队后才能出战`}
     const groups = trainedCombatGroups(save, id)
     if (!groups.length || groups.reduce((sum, group) => sum + group.troops, 0) !== unit.troops) {
       return {ok:false,message:`${formationName(unit)}未配齐武器（${groups.reduce((sum,group)=>sum+group.troops,0)} / ${unit.troops} 把），请先补发后再出战`}
@@ -43,13 +44,14 @@ export class CampaignBattle extends Battle {
   constructor(level, roster, regionEnemies=null) {
     const troops = roster.reduce((sum, unit) => sum + unit.troops, 0)
     super('campaign', level, troops)
+    this.armedTroops=roster.reduce((total,unit)=>total+unit.groups.reduce((sum,group)=>sum+(group.weapon===null?0:group.troops),0),0)
     const columns = Math.max(1, Math.ceil(Math.sqrt(roster.length / 2)))
     const rows = Math.ceil(roster.length / columns)
     this.units = roster.map((unit, i) => {
       const x = roster.length === 1 ? 340 : columns === 1 ? 280 : 150 + (i % columns) * 300 / (columns - 1)
       const y = rows === 1 ? 405 : 215 + Math.floor(i / columns) * 360 / (rows - 1)
       return {id:unit.id,rootId:unit.id,type:unit.type||'squad',name:unit.name,maxHp:unit.troops,hp:unit.troops,x,y,target:{x,y},
-        groups:unit.groups.map(group => ({...group,weapon:weaponById(group.weapon),cool:.2}))}
+        groups:unit.groups.map(group => ({...group,weapon:group.weapon===null?null:weaponById(group.weapon),cool:.2}))}
     })
     this.selectedUnitId = null
     this.enemySequence = 0
@@ -65,7 +67,10 @@ export class CampaignBattle extends Battle {
     if(survivors===total)return
     const counts=shareCounts(unit.groups.map(group=>group.troops),survivors)
     const losses=this.casualties[unit.rootId]??=Object.fromEntries(WEAPONS.map(w=>[w.id,0]))
-    unit.groups.forEach((group,i)=>{losses[group.weapon.id]+=group.troops-counts[i];group.troops=counts[i]})
+    unit.groups.forEach((group,i)=>{
+      const key=group.weapon?.id||'unarmed'
+      losses[key]=(losses[key]||0)+group.troops-counts[i];group.troops=counts[i]
+    })
     unit.groups=unit.groups.filter(group=>group.troops>0)
     if(survivors>0)unit.maxHp=survivors
   }
@@ -102,7 +107,7 @@ export class CampaignBattle extends Battle {
     const total=unit.groups.reduce((sum,g)=>sum+g.troops,0)+parent.groups.reduce((sum,g)=>sum+g.troops,0)
     parent.hp=total;parent.maxHp=total
     for(const incoming of unit.groups){
-      const group=parent.groups.find(group=>group.weapon.id===incoming.weapon.id&&group.trainingBonus===incoming.trainingBonus)
+      const group=parent.groups.find(group=>group.weapon?.id===incoming.weapon?.id&&group.trainingBonus===incoming.trainingBonus)
       if(group)group.troops+=incoming.troops
       else parent.groups.push({...incoming})
     }
@@ -166,7 +171,7 @@ export class CampaignBattle extends Battle {
     for (const unit of this.units) {
       if (unit.hp <= 0) continue
       for (const group of unit.groups) {
-        if(this.combatReady===false)continue
+        if(this.combatReady===false||!group.weapon)continue
         group.cool -= dt
         const weapon = group.weapon
         let target = null, best = weapon.range
@@ -175,7 +180,7 @@ export class CampaignBattle extends Battle {
           if (enemy.hp > 0 && distance < best) { target = enemy; best = distance }
         }
         if (!target || group.cool > 0) continue
-        const damage = (7 + this.maxHp * .025) * weapon.damage * (group.troops / this.maxHp) * (Math.max(0,unit.hp)/unit.maxHp) * (1 + (group.trainingBonus || 0))*this.damageMultiplier
+        const damage = (7 + this.armedTroops * .025) * weapon.damage * (group.troops / this.armedTroops) * (Math.max(0,unit.hp)/unit.maxHp) * (1 + (group.trainingBonus || 0))*this.damageMultiplier
         group.cool = weapon.interval*this.intervalMultiplier
         if (weapon.splash) {
           for (const enemy of this.enemies) if (enemy.hp > 0 && Math.hypot(enemy.x - target.x, enemy.y - target.y) <= weapon.splash) enemy.hp -= damage

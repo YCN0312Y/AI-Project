@@ -1,16 +1,17 @@
+import {fitCamera} from '../js/world-map.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {freshSave,normalizeSave,setFormation,mergeFormations,unmergeFormation,removeFormation} from '../js/state.js'
+import {freshSave,normalizeSave,setFormation,mergeFormations,unmergeFormation,removeFormation,reinforceFormation,formation,splitGarrisonUnit} from '../js/state.js'
 import {stationTroops,recallGarrison,placeVillageFacility,villageOfFormation,villageUnits} from '../js/villages.js'
-import {formationActivity,startFarming} from '../js/base.js'
+import {farmTaskAt,formationActivity,startFarming} from '../js/base.js'
 import {startTrainingTask,cancelTrainingTask,trainingTaskAt} from '../js/training.js'
-import {startProduction,startTreatment,recallFacility} from '../js/facilities.js'
+import {startProduction,startTreatment,startBandageProduction,recallFacility} from '../js/facilities.js'
 import {campaignDeployment} from '../js/campaign.js'
 import {advanceEconomy} from '../js/economy.js'
 import {Game} from '../js/game.js'
 import {donateFood,validateDonation,mobilizationRecord,donationTaste,setMobilizationActive,advanceLogistics,migrateVillageMobilization,recruitmentInterval,totalPersonnel} from '../js/logistics.js'
 
-const setup=(n=6)=>{const s=freshSave();for(let i=0;i<n;i++)assert(setFormation(s,'squad',10).ok);return s}
+const setup=(n=6)=>{const s=freshSave();s.materials.ore=100;s.materials.wood=100;for(let i=0;i<n;i++)assert(setFormation(s,'squad',10).ok);return s}
 function game(s=setup()){
   const g=Object.create(Game.prototype);Object.assign(g,{save:s,scene:'lobby',modal:null,buttons:[],notify(message){this.message=message},persist(){}})
   g.ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)})
@@ -30,6 +31,27 @@ test('驻村不复制部队，合编全部下属同驻，任务互斥，撤回�
   assert.equal(removeFormation(s,4),false);assert.equal(unmergeFormation(s,parent.id).ok,false)
   assert(recallGarrison(s,1,parent.id).ok);assert.equal(villageOfFormation(s,1),null);assert(unmergeFormation(s,parent.id).ok)
   assert(recallGarrison(s,1,4).ok);assert.equal(campaignDeployment(s,[4]).ok,true)
+})
+
+test('村庄管理可给驻军补员和调整配发，保存后仍驻原村',()=>{
+  const g=game(setup(1)),s=g.save;assert(stationTroops(s,1,[1]).ok)
+  const initialTroops=s.troops,initialWeapons=s.weaponCounts.rifle,free=formation(s).unassignedTroops
+  g.openVillage(1);draw(g);click(g,'village-edit-1');draw(g);assert.equal(g.modal,'formation-edit')
+  click(g,'formation-plus');draw(g);click(g,'formation-plus');draw(g);click(g,'formation-save')
+  assert.equal(g.modal,'village');assert.equal(villageUnits(s,1)[0].troops,12)
+  assert.equal(formation(s).unassignedTroops,free-2);assert.equal(s.troops,initialTroops)
+  assert.equal(reinforceFormation(s,1,1).ok,false)
+  assert(reinforceFormation(s,1,0,{rifle:6},12,true).ok);assert.equal(s.weaponCounts.rifle,initialWeapons)
+  assert.equal(setFormation(s,'squad',9,1).ok,false)
+  const saved=normalizeSave(s);assert.equal(villageOfFormation(saved,1),1);assert.equal(villageUnits(saved,1)[0].weapons.rifle,6)
+})
+
+test('驻村合编通过下属补员，上级汇总自动更新并可返回本村',()=>{
+  const g=game(setup(3)),s=g.save,parent=mergeFormations(s,[1,2,3]).unit;assert(stationTroops(s,1,[parent.id]).ok)
+  g.openVillage(1);draw(g);click(g,'village-edit-'+parent.id);draw(g);click(g,'child-view-1');draw(g)
+  click(g,'formation-detail-edit');draw(g);click(g,'formation-plus');draw(g);click(g,'formation-save')
+  assert.equal(g.modal,'formation-detail');assert.equal(g.formationDetailId,1);assert.equal(parent.troops,31);assert.equal(parent.weapons.rifle,31)
+  draw(g);click(g,'children-back');draw(g);click(g,'children-back');assert.equal(g.modal,'village');assert.deepEqual(s.garrisons[1],[parent.id])
 })
 
 test('各村只能训练本村驻军，多村训练并行，保存恢复后完成仍留驻原村',()=>{
@@ -57,19 +79,46 @@ test('设施各一处且不能同村，生产和治疗只用本村驻军，工�
   assert.equal(startTrainingTask(s,1,1).ok,false);assert.equal(recallGarrison(s,2,2).ok,false)
   assert.equal(placeVillageFacility(s,'armory',3).ok,false);assert.equal(placeVillageFacility(s,'medical',3).ok,false)
   const loaded=normalizeSave(structuredClone(s));assert.deepEqual(loaded,s)
-  advanceEconomy(loaded,300,()=>1);assert.equal(loaded.productionTotals.rifle,1);assert.equal(loaded.recoveredTroops,5)
+  advanceEconomy(loaded,300,()=>1);assert.equal(loaded.productionTotals.rifle,5);assert.equal(loaded.recoveredTroops,5)
   assert.equal(villageOfFormation(loaded,2),2);assert.equal(formationActivity(loaded,2),'medical-light')
-  recallFacility(loaded,'armory');assert.equal(formationActivity(loaded,1),'garrison');assert(placeVillageFacility(loaded,'armory',3).ok)
+  recallFacility(loaded,'rifle');assert.equal(formationActivity(loaded,1),'garrison');assert(placeVillageFacility(loaded,'armory',3).ok)
   assert.equal(loaded.facilityVillages.armory,3);assert.equal(villageOfFormation(loaded,1),1)
   recallFacility(loaded,'light');assert.equal(placeVillageFacility(loaded,'medical',1).ok,false) // 重伤部仍在工作
   recallFacility(loaded,'heavy');assert(placeVillageFacility(loaded,'medical',1).ok)
+})
+
+test('村庄可确认拆除正在工作的设施，只结束自己的工单并保留当地人员、库存和伤员',()=>{
+  const s=setup(),g=game(s),oldWx=globalThis.wx
+  let confirmation
+  globalThis.wx={showModal:options=>{confirmation=options}}
+  try{
+    assert(stationTroops(s,1,[1,2]).ok);assert(stationTroops(s,2,[3,4,5]).ok)
+    assert(placeVillageFacility(s,'armory',1).ok);assert(placeVillageFacility(s,'medical',2).ok)
+    s.cookedRice=100;s.materials.grass=50;s.wounded={light:25,heavy:2};s.heavyTreatmentStages=[2,0,0]
+    assert(startProduction(s,[1],'rifle').ok);assert(startProduction(s,[2],'pistol').ok)
+    assert(startTreatment(s,'light',[3]).ok);assert(startTreatment(s,'heavy',[4]).ok);assert(startBandageProduction(s,[5]).ok)
+    advanceEconomy(s,135,()=>1)
+    const before=structuredClone(s)
+    g.openVillage(1);draw(g);click(g,'village-remove-armory')
+    assert(confirmation.title.includes('兵工厂'));confirmation.success({confirm:false});assert.deepEqual(s,before)
+    click(g,'village-remove-armory');confirmation.success({confirm:true});draw(g)
+    assert.equal(s.facilityVillages.armory,null);assert.deepEqual(s.armoryTasks,{})
+    assert(g.buttons.some(button=>button.id==='village-medical'));assert(!g.buttons.some(button=>button.id==='village-remove-armory'))
+    assert.equal(formationActivity(s,1),'garrison');assert.deepEqual(s.medicalTasks,before.medicalTasks)
+    g.openVillage(2);draw(g);click(g,'village-remove-medical')
+    assert(confirmation.title.includes('医疗部'));confirmation.success({confirm:true})
+    assert.equal(s.facilityVillages.medical,null);assert.deepEqual(s.medicalTasks,{light:null,heavy:null});assert.equal(s.bandageTask,null)
+    for(const id of ['garrisons','weaponCounts','materials','productionTotals','bandages','wounded','heavyTreatmentStages','troops'])assert.deepEqual(s[id],before[id])
+    assert.equal(formationActivity(s,5),'garrison');assert.deepEqual(normalizeSave(s),s)
+    assert(placeVillageFacility(s,'armory',2).ok)
+  }finally{if(oldWx===undefined)delete globalThis.wx;else globalThis.wx=oldWx}
 })
 
 test('旧设施任务首次选址带入人员和进度，库存伤员及既有训练不会丢失',()=>{
   const s=setup();s.cookedRice=100;startProduction(s,[1],'pistol');s.wounded.light=10;startTreatment(s,'light',[2]);startTrainingTask(s,3)
   advanceEconomy(s,3);const before=structuredClone(s)
   assert(placeVillageFacility(s,'armory',4).ok);assert(placeVillageFacility(s,'medical',5).ok)
-  assert.equal(s.armoryTask.elapsed,3);assert.equal(s.medicalTasks.light.elapsed,3);assert.equal(s.trainingTask.elapsed,3)
+  assert.equal(s.armoryTasks.pistol.elapsed,3);assert.equal(s.medicalTasks.light.elapsed,3);assert.equal(s.trainingTask.elapsed,3)
   assert.equal(villageOfFormation(s,1),4);assert.equal(villageOfFormation(s,2),5);assert.deepEqual(s.wounded,before.wounded);assert.deepEqual(s.weaponCounts,before.weaponCounts)
   assert.deepEqual(normalizeSave(structuredClone(s)),s)
 })
@@ -80,8 +129,8 @@ test('非法驻军及冲突存档不重复占兵，非法跨村训练和设施�
   assert(startTrainingTask(loaded,1,1).ok);const raw=structuredClone(loaded);raw.villageTrainingTasks[1].villageId=2
   assert.deepEqual(normalizeSave(raw).villageTrainingTasks,{})
   cancelTrainingTask(loaded,1);assert(startProduction(loaded,[1],'rifle',1).ok)
-  const invalid=structuredClone(loaded);invalid.armoryTask.unitIds=[2]
-  assert.equal(normalizeSave(invalid).armoryTask,null)
+  const invalid=structuredClone(loaded);invalid.armoryTasks.rifle.unitIds=[2]
+  assert.equal(normalizeSave(invalid).armoryTasks.rifle,undefined)
   const farm=setup();startFarming(farm,'help',0,'millet',[1]);farm.garrisons={1:[1]}
   const cleaned=normalizeSave(farm);assert(cleaned.farmTask);assert.deepEqual(cleaned.garrisons,{})
 })
@@ -90,25 +139,25 @@ test('村庄训练、工厂和口粮的边界推进一致，饥饿暂停，训�
   const a=setup();a.cookedRice=100;stationTroops(a,1,[1]);stationTroops(a,2,[2]);stationTroops(a,3,[3]);placeVillageFacility(a,'armory',3)
   startTrainingTask(a,1,1);startTrainingTask(a,2,2);startProduction(a,[3],'pistol',3)
   const b=structuredClone(a);advanceEconomy(a,300);for(let i=0;i<300;i++)advanceEconomy(b,1);assert.deepEqual(a,b)
-  assert.equal(a.trainingSessions,2);assert.equal(a.productionTotals.pistol,2)
+  assert.equal(a.trainingSessions,2);assert.equal(a.productionTotals.pistol,10)
   startTrainingTask(a,1,1);a.hungerDebt=3;a.cookedRice=0;advanceEconomy(a,5);assert.equal(trainingTaskAt(a,1).elapsed,0)
   a.cookedRice=13;advanceEconomy(a,10);assert.equal(a.trainingSessions,3);assert.equal(villageOfFormation(a,1),1)
 })
 
-test('地图进入村庄可驻军、翻页、训练与选址，关闭事务返回本村，界面按钮不越界',()=>{
+test('地图进入村庄可滚动选择驻军、训练与选址，关闭事务返回本村，界面按钮不越界',()=>{
   const g=game();g.openWorldMap();g.buttons=[];g.drawWorldMap();click(g,'map-site-1');assert.equal(g.modal,'village-station');draw(g)
-  click(g,'station-unit-1');click(g,'station-next');draw(g);click(g,'station-unit-5');click(g,'station-confirm')
-  assert.deepEqual(g.save.garrisons[1],[1,5]);assert.equal(g.modal,'village');draw(g)
+  click(g,'station-unit-1');g.scrollRoster(g.rosterScroll.max);draw(g);click(g,'station-unit-5');click(g,'station-confirm')
+  assert.equal(g.save.garrisons[1],undefined);g.updateMapMarches(10000);g.openVillage(1);assert.deepEqual(g.save.garrisons[1],[1,5]);assert.equal(g.modal,'village');draw(g)
   click(g,'village-training');draw(g);assert(g.buttons.some(b=>b.id==='training-select-1'));assert.equal(g.buttons.some(b=>b.id==='training-select-2'),false)
   click(g,'training-start');assert(trainingTaskAt(g.save,1));draw(g);click(g,'close');assert.equal(g.modal,'village');assert.equal(g.localVillage,1)
   draw(g);click(g,'village-recall-1');assert(g.message.includes('请先结束'));assert.deepEqual(g.save.garrisons[1],[1,5])
   click(g,'village-training');draw(g);click(g,'training-recall');draw(g);click(g,'close');draw(g)
   click(g,'village-armory');assert.equal(g.save.facilityVillages.armory,1);draw(g)
   assert(g.buttons.some(b=>b.id==='facility-unit-1'));assert.equal(g.buttons.some(b=>b.id==='facility-unit-2'),false)
-  click(g,'facility-unit-1');draw(g);click(g,'facility-start');assert(g.save.armoryTask);draw(g);click(g,'base-return');assert.equal(g.modal,'village')
-  draw(g);click(g,'village-medical');assert.equal(g.modal,'village');assert(g.message.includes('不能同时'))
+  click(g,'facility-unit-1');draw(g);click(g,'facility-start');assert(g.save.armoryTasks.rifle);draw(g);click(g,'base-return');assert.equal(g.modal,'village')
+  draw(g);assert.equal(g.buttons.some(b=>b.id==='village-medical'),false);assert.equal(g.modal,'village')
   click(g,'village-back');assert.equal(g.modal,null);assert.equal(g.localVillage,null)
-  stationTroops(g.save,2,[3]);g.openVillage(2);draw(g);click(g,'village-medical');assert.equal(g.save.facilityVillages.medical,2);draw(g);click(g,'close');assert.equal(g.modal,'village')
+  stationTroops(g.save,2,[3]);g.openVillage(2);draw(g);click(g,'village-medical');assert.equal(g.save.facilityVillages.medical,2);draw(g);click(g,'close');assert.equal(g.modal,'village');draw(g);assert.equal(g.buttons.some(b=>b.id==='village-armory'),false)
 })
 
 test('根据地不再提供帮助耕田、兵工厂、医疗部、训练场，地图田地仍可独立派兵',()=>{
@@ -116,8 +165,25 @@ test('根据地不再提供帮助耕田、兵工厂、医疗部、训练场，�
   for(const id of ['base-farm','base-base-armory','base-base-medical','base-training'])assert.equal(g.buttons.some(b=>b.id===id),false)
   for(const label of ['帮助耕田','兵工厂','医疗部','训练场'])assert.equal(labels.includes(label),false)
   stationTroops(g.save,1,[2])
-  click(g,'base-map');g.buttons=[];g.drawWorldMap();click(g,'map-field-field-1');assert.equal(g.modal,'farm');draw(g)
-  click(g,'farm-unit-1');draw(g);click(g,'farm-start');assert.equal(g.save.farmTask.type,'help');assert.equal(g.save.farmTask.fieldId,'field-1')
+  click(g,'base-map');fitCamera(g.mapCamera);g.buttons=[];g.drawWorldMap();click(g,'map-field-field-1');assert.equal(g.modal,'farm');draw(g)
+  assert(!g.buttons.some(button=>button.id==='farm-unit-1'));click(g,'farm-unit-2');draw(g);click(g,'farm-start');assert.equal(farmTaskAt(g.save,'field-1').type,'help');assert.equal(farmTaskAt(g.save,'field-1').fieldId,'field-1')
+})
+
+test('留村待命的分队同时出现在田地整队名单和部分派遣名单',()=>{
+  const s=freshSave(),g=game(s),labels=[]
+  g.ctx.fillText=(value,x,y)=>labels.push({value:String(value),x,y})
+  assert(setFormation(s,'platoon',35).ok);assert(stationTroops(s,1,[1]).ok)
+  const branch=splitGarrisonUnit(s,1,'squad',10).unit
+  assert(setFormation(s,'squad',10).ok);assert(stationTroops(s,2,[3]).ok)
+  g.openMapField('field-1');draw(g)
+  const parent=labels.find(label=>label.value.includes('☐ 1排')),child=labels.find(label=>label.value.includes('☐ 1排-1班'))
+  assert(parent&&child&&child.x>parent.x&&child.y>parent.y)
+  assert(g.buttons.some(button=>button.id==='farm-unit-'+branch.id))
+  assert(!g.buttons.some(button=>button.id==='farm-unit-3'))
+  click(g,'farm-detach');draw(g);assert(g.buttons.some(button=>button.id==='work-root-'+branch.id))
+  assert(!g.buttons.some(button=>button.id==='work-root-3'))
+  click(g,'work-root-'+branch.id);draw(g);click(g,'work-confirm')
+  assert.deepEqual(farmTaskAt(s,'field-1').unitIds,[branch.id]);assert.equal(farmTaskAt(s,'field-1').workers,5)
 })
 
 test('各村食物金币、口味与动员计时独立，失败不扣物资，暂停一村不影响其他村',()=>{
@@ -187,7 +253,7 @@ test('从不同村庄进入同一个统一动员窗口，赠送只扣一次，�
 
 test('实际构造即显示地图主页，自动迁移旧动员一次，返回主页保留地图和所有常用入口',()=>{
   const oldWx=globalThis.wx,oldFrame=globalThis.requestAnimationFrame,raw=freshSave();let stored,writes=0
-  raw.settings.music=false;raw.millet=20;donateFood(raw,'millet',10);advanceLogistics(raw,4);delete raw.villageMobilizationVersion;stored=structuredClone(raw)
+  raw.settings.music=false;raw.millet=20;donateFood(raw,'millet',10);advanceLogistics(raw,4);delete raw.villageMobilizationVersion;delete raw.baseVillageId;stored=structuredClone(raw)
   const context=new Proxy({}, {get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)})
   globalThis.wx={createCanvas:()=>({getContext:()=>context}),getStorageSync:()=>structuredClone(stored),setStorageSync:(key,value)=>{stored=structuredClone(value);writes++},getWindowInfo:()=>({windowWidth:1440,windowHeight:810,pixelRatio:1}),onTouchStart(){},onTouchMove(){},onTouchEnd(){}}
   globalThis.requestAnimationFrame=()=>{}
