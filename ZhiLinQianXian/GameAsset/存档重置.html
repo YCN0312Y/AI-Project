@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>指挥前线 · 存档重置</title>
+<style>
+body{margin:0;background:#101813;color:#e4e8d7;font:17px/1.8 system-ui,"Microsoft YaHei",sans-serif}main{max-width:760px;margin:8vh auto;padding:30px;background:#1a251e;border:1px solid #42513d}h1{font-size:28px;margin:0 0 15px}button,a{display:inline-block;padding:12px 22px;margin:12px 12px 0 0;border:1px solid #b0c881;background:#31432d;color:#e4e8d7;font:inherit;text-decoration:none;cursor:pointer}button:disabled{opacity:.4;cursor:default}#status{color:#b0c881;white-space:pre-line}small{color:#9ca995}
+</style>
+<main>
+<h1>指挥前线 · 存档重置</h1>
+<p>重新开始会恢复初始兵力、金币和物资，清空编制、任务与占领进度。地图和已开发功能继续保留。</p>
+<p>重置前会在当前浏览器保留一份旧存档，可从本页恢复。</p>
+<p id="summary">正在读取当前存档……</p>
+<button id="reset" disabled>重置当前游戏</button><button id="restore" disabled>恢复重置前存档</button>
+<a href="/">返回游戏</a>
+<p id="status" role="status"></p>
+<small>仅操作本网站的正式游戏存档。重置完成后，请返回游戏查看。</small>
+</main>
+<script type="module">
+import {SAVE_KEY,freshSave} from '../js/state.js';
+const BACKUP_KEY=SAVE_KEY+'.before-reset',status=document.querySelector('#status'),summary=document.querySelector('#summary');
+const reset=document.querySelector('#reset'),restore=document.querySelector('#restore');
+function refresh(){
+  const raw=localStorage.getItem(SAVE_KEY),s=raw?JSON.parse(raw):freshSave();
+  summary.textContent=`当前：${s.name} · 兵力 ${s.troops} 人 · 金币 ${s.coins} · 编制 ${(s.formations||[]).length} 支 · 大米 ${s.rice||0} 份`;
+  reset.disabled=false;restore.disabled=!localStorage.getItem(BACKUP_KEY);
+}
+reset.addEventListener('click',()=>{
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(raw!==null)localStorage.setItem(BACKUP_KEY,JSON.stringify({createdAt:new Date().toISOString(),save:raw}));
+    localStorage.setItem(SAVE_KEY,JSON.stringify(freshSave()));
+    refresh();reset.disabled=true;
+    status.textContent='重置完成：120名士兵、600金币、120把步枪，编制、战绩和占领状态已恢复初始。旧存档已备份，可点击“恢复重置前存档”找回。';
+  }catch(error){status.textContent='未能完成重置：'+error.message;}
+});
+restore.addEventListener('click',()=>{
+  try{
+    const backup=JSON.parse(localStorage.getItem(BACKUP_KEY));
+    if(!backup||typeof backup.save!=='string')throw new Error('未找到有效备份');
+    JSON.parse(backup.save);localStorage.setItem(SAVE_KEY,backup.save);refresh();status.textContent='已恢复重置前的存档，请返回游戏。';
+  }catch(error){status.textContent='未能恢复：'+error.message;}
+});
+try{refresh()}catch(error){status.textContent='读取存档失败：'+error.message}
+</script>
+</html>

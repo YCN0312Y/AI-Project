@@ -5,7 +5,7 @@ import {detachGarrison,recallToStandby,syncIdleBranches} from './state.js'
 import {recallFacility} from './facilities.js'
 import {cancelTrainingTask} from './training.js'
 
-export const freshVillages=()=>({...freshPopulation(),garrisons:{},facilityVillages:{armory:null,medical:null},villageTrainingTasks:{}})
+export const freshVillages=()=>({...freshPopulation(),garrisons:{},facilityVillages:{armory:null},villageTrainingTasks:{}})
 export const isVillage=id=>ALL_VILLAGES.some(v=>v.id===id)
 export const villageRegionId=id=>{const site=ALL_VILLAGES.find(v=>v.id===id);return site?.regionId??site?.id}
 export const villageEnemyTroops=(s,id)=>(s.mapRegions?.[villageRegionId(id)]?.enemies||[]).reduce((sum,unit)=>sum+unit.troops,0)
@@ -39,10 +39,8 @@ export const garrisonedVillages=s=>ALL_VILLAGES.filter(v=>villageControlled(s,v.
 export function normalizeVillages(s,raw){
   Object.assign(s,freshVillages())
   normalizePopulation(s,raw)
-  for(const kind of ['armory','medical']){
-    const id=raw?.facilityVillages?.[kind]
-    if(isVillage(id)&&(kind!=='medical'||id!==s.facilityVillages.armory))s.facilityVillages[kind]=id
-  }
+  const armory=raw?.facilityVillages?.armory
+  if(isVillage(armory))s.facilityVillages.armory=armory
   const taken=new Set(),available=new Set(roots(s).map(u=>u.id))
   for(const village of ALL_VILLAGES){
     const ids=raw?.garrisons?.[village.id]
@@ -70,7 +68,7 @@ export function stationTroops(s,villageId,ids){
 }
 export function recallGarrison(s,villageId,id){
   if(!(s.garrisons?.[villageId]||[]).includes(id))return {ok:false,message:'该部队不在本村驻防'}
-  if(formationActivity(s,id,true))return {ok:false,message:'请先结束本村训练、生产或医疗任务，再撤回驻军'}
+  if(formationActivity(s,id,true))return {ok:false,message:'请先结束部队的当前任务，再撤回驻军'}
   const result=recallToStandby(s,id)
   if(!result.ok)return result
   detachGarrison(s,villageRegionId(villageId),id)
@@ -78,34 +76,58 @@ export function recallGarrison(s,villageId,id){
   return result
 }
 export function placeVillageFacility(s,kind,id){
-  if(!['armory','medical'].includes(kind)||!isVillage(id))return {ok:false,message:'请选择有效的设施和村庄'}
-  if(villageEnemyTroops(s,id)>0)return {ok:false,message:'请先夺回村庄，再设置设施'}
-  const other=kind==='armory'?'medical':'armory'
-  if(s.facilityVillages[other]===id)return {ok:false,message:'同一村庄不能同时设置兵工厂和医疗部'}
-  const previous=s.facilityVillages[kind]
+  if(kind!=='armory'||!isVillage(id))return {ok:false,message:'请选择有效的村庄设置兵工厂'}
+  if(villageEnemyTroops(s,id)>0)return {ok:false,message:'请先夺回村庄，再设置兵工厂'}
+  const previous=s.facilityVillages.armory
   if(previous===id)return {ok:true}
-  const tasks=kind==='armory'?Object.values(s.armoryTasks||{}):[s.bandageTask,...Object.values(s.medicalTasks||{})]
-  if(previous&&tasks.some(Boolean))return {ok:false,message:'请先召回设施工作人员，再迁移设施'}
+  if(previous!==null)return {ok:false,message:'请使用转移兵工厂选址'}
+  const tasks=Object.values(s.armoryTasks)
   // 旧存档中尚无选址的任务，首次选址时一并带入原工作人员和进度。
   const ids=[...new Set(tasks.filter(Boolean).flatMap(t=>t.unitIds))]
   if(ids.some(root=>villageOfFormation(s,root)!==null&&villageOfFormation(s,root)!==id))return {ok:false,message:'原工作人员已在其他村驻防，请先撤回'}
-  s.facilityVillages[kind]=id
+  s.facilityVillages.armory=id
   if(ids.length){s.garrisons[id]=[...new Set([...(s.garrisons[id]||[]),...ids])];for(const task of tasks.filter(Boolean))task.villageId=id}
   return {ok:true}
 }
+export function armoryTransferError(s,id){
+  const origin=s.facilityVillages.armory
+  if(origin===null)return '请先设置兵工厂'
+  if(villageEnemyTroops(s,origin)>0)return '请先夺回兵工厂所在村庄'
+  if(id===origin)return '请选择其他村庄'
+  if(!villageControlled(s,id))return '请选择我方控制的村庄'
+  return ''
+}
+export function transferArmory(s,id){
+  const message=armoryTransferError(s,id)
+  if(message)return {ok:false,message}
+  const origin=s.facilityVillages.armory,movingIds=[...new Set(Object.values(s.armoryTasks).flatMap(t=>t.unitIds))]
+  for(const uid of movingIds){
+    for(const task of farmTasks(s))if(task.unitIds?.includes(uid)&&task.villageId!==id)clearFarmTask(s,task.fieldId)
+    if((s.garrisons[origin]||[]).includes(uid)){
+      s.garrisons[origin]=s.garrisons[origin].filter(k=>k!==uid)
+      if(!s.garrisons[origin].length)delete s.garrisons[origin]
+      s.garrisons[id]=[...new Set([...(s.garrisons[id]||[]),uid])]
+    }else{
+      const unit=s.formations.find(u=>u.id===uid)
+      if(unit&&unit.splitOrigin!==undefined)unit.splitOrigin=villageRegionId(id)
+    }
+  }
+  for(const task of Object.values(s.armoryTasks))task.villageId=id
+  s.facilityVillages.armory=id
+  syncIdleBranches(s)
+  return {ok:true}
+}
 export function removeVillageFacility(s,kind,id){
-  if(!['armory','medical'].includes(kind)||!isVillage(id)||s.facilityVillages[kind]!==id)return {ok:false,message:'本村没有这座设施'}
-  if(villageEnemyTroops(s,id)>0)return {ok:false,message:'请先夺回村庄，再拆除设施'}
-  const tasks=kind==='armory'?Object.keys(s.armoryTasks):['bandages','light','heavy']
-  for(const task of tasks)recallFacility(s,task)
-  s.facilityVillages[kind]=null
+  if(kind!=='armory'||!isVillage(id)||s.facilityVillages.armory!==id)return {ok:false,message:'本村没有兵工厂'}
+  if(villageEnemyTroops(s,id)>0)return {ok:false,message:'请先夺回村庄，再拆除兵工厂'}
+  for(const product of Object.keys(s.armoryTasks))recallFacility(s,product)
+  s.facilityVillages.armory=null
   syncIdleBranches(s)
   return {ok:true}
 }
 export function evacuateVillage(s,id){
   for(const task of farmTasks(s))if(task.villageId===id||mapField(task.fieldId)?.villageId===id)clearFarmTask(s,task.fieldId)
   if(s.facilityVillages.armory===id)for(const product of Object.keys(s.armoryTasks))recallFacility(s,product)
-  if(s.facilityVillages.medical===id)for(const task of ['bandages','light','heavy'])recallFacility(s,task)
   cancelTrainingTask(s,id)
   const stationed=new Set(s.garrisons[id]||[])
   for(const unit of s.formations)if(stationed.has(unit.id)||localSplitVillage(s,unit.id)===id)delete unit.splitOrigin

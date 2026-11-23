@@ -11,7 +11,7 @@ import { Game } from '../js/game.js'
 import { stationTroops } from '../js/villages.js'
 
 test('在售商品按指定件数限量，售罄不扣金币或增加库存，武器和物资统一约束',()=>{
-  assert.deepEqual(SHOP_LIMITS,{rifle:50,pistol:30,machinegun:10,sniper:1,mortar:3,rifleAmmo:100,pistolAmmo:70,sniperAmmo:20,mortarAmmo:5,grenades:50,bandages:100,medkits:20,millet:100,rice:100,corn:100,pork:30,eggs:30,salt:10,oil:10})
+  assert.deepEqual(SHOP_LIMITS,{rifle:50,pistol:30,machinegun:10,sniper:1,mortar:3,bullets:190,mortarAmmo:5,grenades:50,bandages:100,medkits:20,millet:100,rice:100,corn:100,pork:30,eggs:30,salt:10,oil:10})
   for(const item of [...WEAPONS,...GOODS].filter(item=>shopSells(item.id))){
     const s=freshSave();s.coins=1000000;syncShop(s,1000);let total=0
     const weapon=WEAPONS.includes(item),before=weapon?s.weaponCounts[item.id]:s[item.id]
@@ -21,21 +21,27 @@ test('在售商品按指定件数限量，售罄不扣金币或增加库存，�
   }
 })
 
-test('轻机枪子弹从商城下架和停止补货，已有仓库库存保留',()=>{
-  const s=normalizeSave({coins:1000,machinegunAmmo:33,shopStock:{machinegunAmmo:50},shopNextRestockAt:1000})
-  assert.equal(s.machinegunAmmo,33);assert.equal(s.shopStock.machinegunAmmo,undefined)
-  assert(syncShop(s,1000));assert.equal(shopAvailable(s,'machinegunAmmo',1001),0);assert.equal(s.shopStock.machinegunAmmo,undefined)
-  assert.equal(purchase(s,'machinegunAmmo'),false);assert.equal(s.machinegunAmmo,33);assert.equal(s.coins,1000)
+test('仓库合并四类旧子弹，商城合并原在售子弹的剩余数量并沿用补货时间',()=>{
+  const s=normalizeSave({coins:1000,rifleAmmo:10,pistolAmmo:20,machinegunAmmo:33,sniperAmmo:7,mortarAmmo:5,
+    shopStock:{rifleAmmo:0,pistolAmmo:45,machinegunAmmo:50,sniperAmmo:10},shopNextRestockAt:1000})
+  assert.equal(s.bullets,70);assert.equal(s.mortarAmmo,5)
+  assert.equal(shopAvailable(s,'bullets',999),55);assert.equal(syncShop(s,999),false)
+  for(const id of ['rifleAmmo','pistolAmmo','machinegunAmmo','sniperAmmo']){
+    assert(!Object.hasOwn(s,id));assert(!Object.hasOwn(s.shopStock,id));assert.equal(purchase(s,id),false)
+  }
+  assert.equal(s.coins,1000)
+  assert.deepEqual(normalizeSave(s),s)
+  assert(syncShop(s,1000));assert.equal(shopAvailable(s,'bullets',1001),190);assert.equal(s.bullets,70)
 })
 
 test('物资按单件库存售出最后余数，比例计价向上取整；五分钟前不刷新，到期补满而不叠加',()=>{
-  const s=freshSave();s.coins=10000;const ammo=GOODS.find(item=>item.id==='rifleAmmo');syncShop(s,1000)
-  for(let i=0;i<3;i++)assert(buyStock(s,ammo,false,1001));assert.equal(s.rifleAmmo,90)
+  const s=freshSave();s.coins=10000;const ammo=GOODS.find(item=>item.id==='bullets');syncShop(s,1000)
+  for(let i=0;i<6;i++)assert(buyStock(s,ammo,false,1001));assert.equal(s.bullets,180)
   const quote=purchaseQuote(s,ammo,false,1001);assert.equal(quote.amount,10);assert.equal(quote.cost,14)
-  assert(buyStock(s,ammo,false,1001));assert.equal(s.rifleAmmo,100);assert.equal(s.coins,9866)
-  assert.equal(syncShop(s,1000+SHOP_INTERVAL-1),false);assert.equal(s.shopStock.rifleAmmo,0)
-  assert(syncShop(s,1000+SHOP_INTERVAL));assert.equal(s.shopStock.rifleAmmo,100);assert.equal(s.shopStock.rifle,50)
-  const next=s.shopNextRestockAt;assert(syncShop(s,next+SHOP_INTERVAL*10));assert.equal(s.shopStock.rifleAmmo,100);assert(s.shopNextRestockAt>next+SHOP_INTERVAL*10)
+  assert(buyStock(s,ammo,false,1001));assert.equal(s.bullets,190);assert.equal(s.coins,9746)
+  assert.equal(syncShop(s,1000+SHOP_INTERVAL-1),false);assert.equal(s.shopStock.bullets,0)
+  assert(syncShop(s,1000+SHOP_INTERVAL));assert.equal(s.shopStock.bullets,190);assert.equal(s.shopStock.rifle,50)
+  const next=s.shopNextRestockAt;assert(syncShop(s,next+SHOP_INTERVAL*10));assert.equal(s.shopStock.bullets,190);assert(s.shopNextRestockAt>next+SHOP_INTERVAL*10)
 })
 
 test('刷新保留商店额度和时间，离线补满最多一轮，失败购买不修改存档',()=>{
@@ -121,7 +127,7 @@ test('商城食品货源恢复原上限，旧1000货源被限制，玩家仓库�
 
 test('现有存档七种生食各设1000，其他库存不变，消耗和重新读取不会再次补满',()=>{
   const raw=freshSave();delete raw.warehouseFoodAdjustmentVersion
-  raw.millet=1500;raw.rice=7;raw.coins=321;raw.rifleAmmo=42
+  raw.millet=1500;raw.rice=7;raw.coins=321;raw.bullets=42
   for(const dish of DISHES)raw[dish.id]=17
   const s=normalizeSave(raw),before=structuredClone(s)
   assert.equal(applyWarehouseFoodAdjustment(s),true)

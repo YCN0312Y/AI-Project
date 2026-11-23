@@ -5,15 +5,15 @@ import {LAYOUT_FIELDS,LAYOUT_REGIONS} from '../js/map-layout.js'
 import {freshSave,normalizeSave,setFormation,mergeFormations,removeFormation,splitGarrisonUnit,formation,formationName,rejoinFormation,formationOccupancy,reinforcementCapacity,reinforceFormation} from '../js/state.js'
 import {occupyRegion,recallRegion,regionOwner,regionUnits,regionLocalUnits,regionDispatch,regionRecord,regionEnemyTroops} from '../js/regions.js'
 import {stationTroops,recallGarrison,placeVillageFacility,controlledVillages,villageUnits} from '../js/villages.js'
-import {startMarch,advanceMarches,marchOrigin,marchRoute} from '../js/marching.js'
+import {startMarch,advanceMarches,marchOrigin,marchPosition,marchRoute} from '../js/marching.js'
 import {populationRule,villagePopulation} from '../js/population.js'
 import {startTrainingTask,cancelTrainingTask} from '../js/training.js'
 import {farmTaskAt,formationActivity,startFarming} from '../js/base.js'
 import {Game} from '../js/game.js'
 import {startGathering,stopGathering} from '../js/gathering.js'
 import {controlRegionGeometry,regionContains} from '../js/control-regions.js'
-import {RAID_INTERVAL,RAID_RESPONSE_WINDOW,RAID_TRAVEL_SECONDS,advanceRaids,raidOrigin,raidMarch,raidDeployment,makeRaidBattle,resolveRaidAutomatically} from '../js/raids.js'
-import {startProduction,startTreatment} from '../js/facilities.js'
+import {RAID_INTERVAL,RAID_RESPONSE_WINDOW,RAID_TRAVEL_SECONDS,advanceRaids,raidOrigin,raidMarch,raidDeployment,makeRaidBattle,resolveRaidAutomatically,autoDefendRaid} from '../js/raids.js'
+import {startProduction} from '../js/facilities.js'
 
 const neutral=MAP_REGIONS.find(v=>!v.enemyTroops),enemy=MAP_REGIONS.find(v=>v.enemyTroops&&v.enemyTroops<=24)
 function setup(){const s=freshSave();for(let i=0;i<6;i++)assert(setFormation(s,'squad',10).ok);s.cookedRice=100;return s}
@@ -125,9 +125,10 @@ test('旧存档只初始化一次敌军，清空守军不因刷新复活，非�
   const restored=normalizeSave(s);assert.deepEqual(regionRecord(restored,neutral.id).garrisonIds,[2]);assert.deepEqual(regionRecord(restored,other.id).garrisonIds,[3])
 })
 
-test('敌占点不能直接占领，缺枪不能进攻，战斗只有情报所示守军且胜利后真实占领缴获',()=>{
+test('敌占点需要进攻，无枪编制可出战，胜利后占领并缴获实际守军武器',()=>{
   const g=game(),s=g.save;assert.equal(occupyRegion(s,enemy.id,[1]).ok,false)
-  const missing=s.formations[0];missing.weapons.rifle=0;assert.equal(regionDispatch(s,enemy.id,[1]).ok,false);missing.weapons.rifle=10
+  s.formations[0].weapons.rifle=0
+  assert.deepEqual(regionDispatch(s,enemy.id,[1]).units[0].groups,[{weapon:null,troops:10,trainingBonus:0}])
   const before=s.weaponCounts.rifle,stage=s.stage;g.beginRegionBattle(enemy.id,[1,2,3]);const b=g.battle
   assert.equal(g.scene,'battle');assert.equal(b.goal,1);assert.equal(formationActivity(s,1),'battle')
   for(let i=0;i<100&&!b.done;i++){for(const e of b.enemies)e.hp=0;b.update(.5)}
@@ -143,7 +144,7 @@ test('进攻失败保留剩余敌军，不获得占领；全灭扣兵扣枪且�
   b.units[0].hp=0;b.done=true;b.won=false;g.finish()
   assert.equal(regionOwner(g.save,enemy.id),'enemy');assert.equal(regionEnemyTroops(g.save,enemy.id),enemy.enemyTroops-3)
   assert.equal(regionUnits(g.save,enemy.id).length,0);assert.equal(g.save.troops,110);assert.equal(g.save.weaponCounts.rifle,110)
-  assert.equal(g.result.woundedLight,0);assert.equal(g.result.woundedHeavy,0);assert.equal(g.result.directDeaths,10)
+  assert.equal(g.result.lostTroops,10)
 })
 
 test('获胜驻防只保留真实余员和武器，不自动补满战损编制',()=>{
@@ -289,10 +290,33 @@ test('在派遣名单分出新部队后回到原名单，在上级下面自动�
   const s=freshSave();s.troops=100;s.weaponCounts.rifle=100;s.cookedRice=100
   assert(setFormation(s,'company',100).ok);assert(stationTroops(s,1,[1]).ok)
   const g=game(s)
-  g.openRegionDeployment(enemy.id);drawModal(g);click(g,'deployment-split-1');assert.equal(g.modal,'garrison-split')
+  g.openRegionDeployment(enemy.id);drawModal(g);click(g,'deployment-unit-1');click(g,'deployment-split-1');assert.equal(g.modal,'garrison-split')
   drawModal(g);click(g,'gsplit-type-platoon');drawModal(g);click(g,'gsplit-preset-32');drawModal(g);click(g,'gsplit-confirm')
   assert.equal(g.modal,'campaign-deploy');assert.equal(g.deploymentIds.length,1)
   drawModal(g);assert(g.buttons.some(b=>b.id==='deployment-unit-'+g.deploymentIds[0]));click(g,'deployment-confirm');g.updateMapMarches(10000);assert.equal(g.scene,'battle');assert.equal(g.battle.units[0].hp,32)
+})
+
+test('攻打敌占据点时可选驻村整团，从原驻地出发行军并带上合编下属',()=>{
+  const s=freshSave(),g=game(s),origin=MAP_SITES[0]
+  s.troops=1210;s.weaponCounts.rifle=1210
+  for(let i=0;i<3;i++)assert(setFormation(s,'battalion',400).ok)
+  const regiment=mergeFormations(s,[1,2,3]).unit
+  assert(setFormation(s,'squad',10).ok)
+  const guard=s.formations.find(unit=>unit.type==='squad')
+  assert(stationTroops(s,origin.id,[regiment.id,guard.id]).ok)
+  g.openRegionDeployment(enemy.id);drawModal(g);click(g,'deployment-tier-regiment');drawModal(g)
+  assert(g.buttons.some(button=>button.id==='deployment-split-'+regiment.id))
+  click(g,'deployment-unit-'+regiment.id);drawModal(g)
+  assert.deepEqual(g.deploymentIds,[regiment.id]);assert.equal(s.marchingOrders.length,0)
+  click(g,'deployment-confirm')
+  assert.deepEqual(s.garrisons[origin.id],[guard.id]);assert.equal(s.troops,1210)
+  assert.equal(regionOwner(s,enemy.id),'enemy');assert.equal(g.scene,'world-map')
+  assert.deepEqual(marchPosition(s.marchingOrders[0]),{x:origin.x,y:origin.y})
+  assert.deepEqual(s.marchingOrders[0].unitIds,[regiment.id]);assert.deepEqual(normalizeSave(s),s)
+  for(const id of regiment.children)assert.equal(formationActivity(s,id),'march')
+  g.updateMapMarches(10000);assert.equal(g.scene,'battle')
+  assert.equal(g.battle.units.length,1);assert.equal(g.battle.units[0].hp,1200)
+  for(const id of regiment.children)assert.equal(formationActivity(s,id),'battle')
 })
 
 test('调入与出战把分出部队缩进排在上级下，显示不可派的原因并在滚动时保留选择',()=>{
@@ -316,8 +340,8 @@ test('调入与出战把分出部队缩进排在上级下，显示不可派的�
     assert(labels.some(label=>label.value===`${mountain.name} · 采集矿石`));assert(!ids().includes(`${prefix}-unit-2`))
     assert(labels.some(label=>label.y===child.y&&label.value===`${forest.name} · 采集干草`));assert(!ids().includes(`${prefix}-unit-8`))
     click(g,`${prefix}-unit-3`);g.scrollRoster(g.rosterScroll.max);labels.length=0;drawModal(g)
-    assert.equal(labels.some(label=>label.value==='未配齐武器'),prefix==='deployment')
-    assert.equal(ids().includes(`${prefix}-unit-7`),prefix==='station')
+    assert.equal(labels.some(label=>label.value==='待命 · 仅近战'),prefix==='deployment')
+    assert(ids().includes(`${prefix}-unit-7`))
     assert(labels.some(label=>label.value==='已选 1 支 · 10 人'))
     assert.deepEqual(prefix==='deployment'?g.deploymentIds:g.stationSelected,[3])
   }
@@ -372,8 +396,13 @@ test('调军筛选按上级级别保留分队层级，换级别不清空选择',
     if(prefix==='deployment')click(g,'deployment-all')
     else click(g,'station-unit-'+branch.id)
     click(g,prefix+'-tier-division');draw();assert(labels.some(label=>label.value==='暂无此级别的部队'))
-    assert(labels.some(label=>label.value==='已选 2 支 · 17 人'))
-    assert.deepEqual(prefix==='deployment'?g.deploymentIds:g.stationSelected,[1,branch.id])
+    if(prefix==='deployment'){
+      assert(labels.some(label=>label.value==='已选 3 支 · 40 人'))
+      assert.deepEqual(g.deploymentIds,[1,2,branch.id])
+    }else{
+      assert(labels.some(label=>label.value==='已选 2 支 · 17 人'))
+      assert.deepEqual(g.stationSelected,[1,branch.id])
+    }
   }
   click(g,'station-confirm')
   assert.deepEqual(s.marchingOrders.flatMap(order=>order.unitIds),[1,branch.id])
@@ -633,7 +662,7 @@ test('敌袭只选有驻军的驻地，每处一条，上限三条，刷新保�
   assert.equal(advanceRaids(s,RAID_INTERVAL,()=>0).alert,null)
   assert(stationTroops(s,1,[1]).ok);assert(stationTroops(s,2,[2]).ok);assert(stationTroops(s,3,[3]).ok)
   assert(occupyRegion(s,mountain.id,[4]).ok)
-  assert.equal(advanceRaids(s,RAID_INTERVAL-1,()=>0).alert,null)
+  assert.equal(advanceRaids(s,170,()=>0).alert,null)
   assert.equal(advanceRaids(s,1,()=>0).alert.siteId,1)
   assert.equal(advanceRaids(s,RAID_INTERVAL,()=>.99).alert.siteId,mountain.id)
   assert.equal(advanceRaids(s,RAID_INTERVAL,()=>0).alert.siteId,2)
@@ -642,6 +671,35 @@ test('敌袭只选有驻军的驻地，每处一条，上限三条，刷新保�
   assert(recallGarrison(s,1,1).ok)
   assert.equal(advanceRaids(s,1,()=>0).changed,true)
   assert.deepEqual(s.raidAlerts.map(alert=>alert.siteId),[mountain.id,2])
+})
+
+test('一处、五处及十七处驻地分别每五分钟、两分半和一分钟遇袭',()=>{
+  const baseline=freshSave()
+  const sites=ALL_VILLAGES.filter(village=>regionEnemyTroops(baseline,village.regionId??village.id)===0).slice(0,17)
+  for(const [count,interval] of [[1,300],[5,150],[17,60]]){
+    const s=freshSave()
+    for(const [index,site] of sites.slice(0,count).entries()){
+      assert(setFormation(s,'squad',7).ok)
+      assert(stationTroops(s,site.id,[index+1]).ok)
+    }
+    assert.equal(advanceRaids(s,interval-1,()=>0).alert,null)
+    const alert=advanceRaids(s,1,()=>0).alert
+    assert.equal(alert.siteId,sites[0].id)
+  }
+})
+
+test('大型驻地按驻守人数匹配来袭，完整保存兵力而不被120人上限截断',()=>{
+  const s=freshSave();s.troops=500;s.weaponCounts.rifle=500
+  assert(setFormation(s,'battalion',500).ok);assert(stationTroops(s,1,[1]).ok)
+  for(const [random,force] of [[0,450],[.5,500],[.99,549]]){
+    const next=structuredClone(s),alert=advanceRaids(next,RAID_INTERVAL,()=>random).alert
+    assert.equal(alert.force,force)
+    const loaded=normalizeSave(next)
+    assert.equal(loaded.raidAlerts[0].force,force)
+    const battle=makeRaidBattle(raidDeployment(loaded,alert.id),loaded)
+    assert(battle.regionEnemyQueue.length<=8)
+    assert.equal(battle.regionEnemyQueue.reduce((count,unit)=>count+unit.troops,0),force)
+  }
 })
 
 test('敌袭从敌占据点沿道路行军，显示来源和兵力，抵达后在目标显示交战标记',()=>{
@@ -695,6 +753,7 @@ test('左侧警报可接管本村全员防守，未配枪士兵和参训部队�
   assert(stationTroops(s,1,[1,2,3]).ok);assert(stationTroops(s,2,[4]).ok)
   s.formations[1].weapons.rifle=0
   assert(startTrainingTask(s,3,1).ok)
+  s.villageTrainingTasks[1].elapsed=2
   const alert=advanceRaids(s,RAID_INTERVAL,()=>0).alert
   assert.deepEqual(raidDeployment(s,alert.id).units.map(unit=>unit.id),[1,2,3])
   g.openWorldMap();g.drawWorldMap()
@@ -706,8 +765,8 @@ test('左侧警报可接管本村全员防守，未配枪士兵和参训部队�
   assert.equal(b.maxHp,30);assert.equal(b.armedTroops,20)
   assert.equal(formationActivity(s,1),'battle')
   assert.equal(formationActivity(s,2),'battle');assert.equal(formationActivity(s,3),'battle');assert.equal(formationActivity(s,4),'garrison')
-  assert(!s.villageTrainingTasks[1])
   g.updateLogistics(RAID_RESPONSE_WINDOW+1,()=>0)
+  assert.equal(s.villageTrainingTasks[1].elapsed,2)
   assert.equal(s.raidAlerts[0].responseSeconds,RAID_RESPONSE_WINDOW);assert.deepEqual(s.raidReports,[])
   assert.equal(g.battle,b);assert.equal(g.modal,null)
   b.units[0].hp=7;b.units[1].hp=6;b.done=true;b.won=true;g.finish()
@@ -716,6 +775,7 @@ test('左侧警报可接管本村全员防守，未配枪士兵和参训部队�
   assert.equal(s.stage,1);assert.deepEqual(s.raidAlerts,[]);assert.deepEqual(s.garrisons[1],[1,2,3])
   assert.equal(formationActivity(s,1),'garrison')
   const settled=structuredClone(s);g.finish();assert.deepEqual(s,settled)
+  g.updateLogistics(1,()=>0);assert.equal(s.villageTrainingTasks[1].elapsed,3)
   drawModal(g);tapButton(g,'next');assert.equal(g.modal,'village');assert.equal(g.villageId,1)
 })
 
@@ -743,11 +803,12 @@ test('警报列表右侧按钮可收起并拉出，收起后原区域恢复地�
 test('敌袭默认倒计时并自动结算，手枪驻军可应敌，战报可回看且不会切换场景',()=>{
   const g=game(),s=g.save,mountain=MAP_REGIONS.find(site=>site.type==='mountain'&&!site.enemyTroops)
   s.formations[0].weapons.rifle=0;s.formations[0].weapons.pistol=10;s.weaponCounts.pistol=10
+  s.bullets=500
   assert(occupyRegion(s,mountain.id,[1]).ok)
   g.updateLogistics(RAID_INTERVAL,()=>0)
   assert.match(g.message,RegExp(mountain.name+'遭到敌袭'))
   const alert=s.raidAlerts[0];assert.deepEqual(g.saved.raidAlerts,[alert])
-  const simulated=makeRaidBattle(raidDeployment(s,alert.id));resolveRaidAutomatically(simulated)
+  const simulated=makeRaidBattle(raidDeployment(s,alert.id),structuredClone(s));resolveRaidAutomatically(simulated)
   assert(simulated.units[0].x>340);assert(simulated.time<180)
   g.updateLogistics(RAID_RESPONSE_WINDOW-1,()=>0)
   assert.equal(alert.responseSeconds,1);assert.deepEqual(s.raidReports,[])
@@ -758,12 +819,83 @@ test('敌袭默认倒计时并自动结算，手枪驻军可应敌，战报可�
   assert(!g.battle);assert.equal(g.scene,'world-map');assert.equal(g.modal,null)
   assert.deepEqual(s.raidAlerts,[]);assert.equal(s.stage,1)
   assert.equal(s.raidReports[0].id,alert.id);assert.notEqual(s.raidReports[0].outcome,'undefended')
+  assert(!Object.hasOwn(s.raidReports[0],'xp'))
+  assert(s.bullets<500);assert.equal(g.saved.bullets,s.bullets)
   assert.deepEqual(normalizeSave(s).raidReports,s.raidReports)
   const after=structuredClone(s);g.updateLogistics(1,()=>0)
-  for(const key of ['troops','weaponCounts','raidReports','coins','xp','wounded'])assert.deepEqual(s[key],after[key])
+  for(const key of ['troops','weaponCounts','raidReports','coins'])assert.deepEqual(s[key],after[key])
   g.openWorldMap();g.drawWorldMap();tapButton(g,'raid-alert-'+alert.id)
   assert.equal(g.modal,'raid');drawModal(g)
   assert(!g.buttons.some(button=>button.id==='raid-manual'));tapButton(g,'raid-back');assert.equal(g.modal,null)
+})
+
+test('驻地无弹和无枪都能自动近战，伤亡比有弹防守更大',t=>{
+  t.mock.method(Math,'random',()=>.5)
+  const g=game(),s=g.save,mountain=MAP_REGIONS.find(site=>site.type==='mountain'&&!site.enemyTroops)
+  s.bullets=2000;assert(occupyRegion(s,mountain.id,[1]).ok)
+  g.updateLogistics(RAID_INTERVAL,()=>0)
+  const alert=s.raidAlerts[0],dry=structuredClone(s),unarmed=structuredClone(s)
+  dry.bullets=0;unarmed.formations[0].weapons.rifle=0
+  const supplied=autoDefendRaid(s,alert.id),noAmmo=autoDefendRaid(dry,alert.id),noGuns=autoDefendRaid(unarmed,alert.id)
+  assert.equal(supplied.outcome,'won');assert(s.bullets<2000)
+  assert.equal(noAmmo.deployedTroops,10);assert.equal(noGuns.deployedTroops,10)
+  assert.notEqual(noAmmo.outcome,'undefended');assert.notEqual(noGuns.outcome,'undefended')
+  assert(noAmmo.lostTroops>supplied.lostTroops);assert.equal(noGuns.lostTroops,noAmmo.lostTroops)
+  assert.equal(dry.bullets,0);assert.equal(unarmed.bullets,2000)
+})
+
+test('两支有弹的10人班挡住18名来敌时，接近的兵力带来明显战损',t=>{
+  t.mock.method(Math,'random',()=>.5)
+  const s=setup();s.bullets=2000
+  assert(stationTroops(s,1,[1,2]).ok)
+  s.raidAlerts=[{id:1,siteId:1,force:18,responseSeconds:0}]
+  const report=autoDefendRaid(s,1)
+  assert.equal(report.outcome,'won')
+  assert.equal(report.deployedTroops,20)
+  assert.equal(report.kills,18)
+  assert(report.lostTroops>=6)
+  assert.equal(s.bullets,1982)
+  assert(!Object.hasOwn(report,'woundedLight'))
+})
+
+test('山地遇袭时30人驻防和150人采集一起应敌，守住后幸存人员继续原进度',t=>{
+  t.mock.method(Math,'random',()=>.5)
+  const s=freshSave(),g=game(s),mountain=MAP_REGIONS.find(site=>site.type==='mountain'&&!site.enemyTroops)
+  s.troops=180;s.weaponCounts.rifle=180;s.bullets=2000;s.cookedRice=100
+  assert(setFormation(s,'platoon',30).ok);assert(setFormation(s,'company',150).ok)
+  assert(occupyRegion(s,mountain.id,[1,2]).ok)
+  assert(startGathering(s,mountain.id,[2],'ore').ok)
+  const task=s.gatheringTasks[mountain.id].ore
+  task.elapsed=20
+  const alert=advanceRaids(s,RAID_INTERVAL,()=>.5).alert
+  assert.equal(alert.force,180)
+  assert.deepEqual(raidDeployment(s,alert.id).units.map(unit=>[unit.id,unit.troops]),[[1,30],[2,150]])
+  const automatic=structuredClone(s)
+  const report=autoDefendRaid(automatic,alert.id)
+  assert.equal(report.deployedTroops,180)
+  assert.equal(report.outcome,'won')
+  assert.equal(automatic.gatheringTasks[mountain.id].ore.elapsed,20)
+  g.beginRaid(alert.id);assert.equal(g.battle.maxHp,180)
+  assert.equal(formationActivity(s,2),'battle')
+  g.updateLogistics(50,()=>0);assert.equal(task.elapsed,20);assert.equal(s.materials.ore,0)
+  g.battle.units[1].hp=120;g.battle.done=true;g.battle.won=true;g.finish()
+  assert.equal(formationActivity(s,2),'gathering');assert.equal(task.workers,120)
+  assert.deepEqual(normalizeSave(s).gatheringTasks,s.gatheringTasks)
+  g.updateLogistics(40,()=>0);assert.equal(s.materials.ore,120);assert.equal(task.elapsed,0)
+})
+
+test('驻防主队阵亡时，守住据点的采集分队继续采集并保留我方控制',()=>{
+  const s=freshSave(),g=game(s),mountain=MAP_REGIONS.find(site=>site.type==='mountain'&&!site.enemyTroops)
+  assert(setFormation(s,'platoon',40).ok);assert(occupyRegion(s,mountain.id,[1]).ok)
+  const branch=splitGarrisonUnit(s,1,'squad',10).unit
+  assert(startGathering(s,mountain.id,[branch.id],'ore').ok)
+  const alert=advanceRaids(s,RAID_INTERVAL,()=>.5).alert
+  g.beginRaid(alert.id);assert.equal(g.battle.maxHp,40)
+  g.battle.units[0].hp=0;g.battle.done=true;g.battle.won=true;g.finish()
+  assert.equal(regionOwner(s,mountain.id),'player')
+  assert.deepEqual(regionUnits(s,mountain.id).map(unit=>unit.id),[branch.id])
+  assert.equal(s.gatheringTasks[mountain.id].ore.workers,10)
+  assert.deepEqual(normalizeSave(s),s)
 })
 
 test('自动应敌可在玩家指挥另一场战斗时结算，保留原战斗状态与未结伤亡',()=>{
@@ -772,11 +904,10 @@ test('自动应敌可在玩家指挥另一场战斗时结算，保留原战斗�
   const alert=advanceRaids(s,RAID_INTERVAL,()=>0).alert
   g.beginRegionBattle(enemy.id,[2,3]);const battle=g.battle
   battle.units[0].hp=0;g.updateBattle(.05)
-  const pending=structuredClone(s.pendingBattleCasualties)
-  assert(pending?.total>0)
+  const losses=battle.lostTroops;assert.equal(losses,10)
   g.updateLogistics(RAID_RESPONSE_WINDOW,()=>0)
   assert.equal(g.battle,battle);assert.equal(g.scene,'battle');assert.equal(g.modal,null)
-  assert.deepEqual(s.pendingBattleCasualties,pending)
+  assert.equal(battle.lostTroops,losses)
   assert.equal(formationActivity(s,3),'battle');assert.equal(s.raidReports[0].id,alert.id)
 })
 
@@ -784,7 +915,7 @@ test('结算后的战报统一在10秒后移出左侧列表，刷新不延长并
   let now=Date.now()
   t.mock.method(Date,'now',()=>now);t.mock.method(Math,'random',()=>.5)
   const s=freshSave(),g=game(s)
-  s.troops=150;s.weaponCounts.rifle=150;s.cookedRice=100
+  s.troops=150;s.weaponCounts.rifle=150;s.bullets=20000;s.cookedRice=100
   assert(setFormation(s,'company',150).ok);assert(stationTroops(s,1,[1]).ok)
   g.updateLogistics(RAID_INTERVAL,()=>0);g.updateLogistics(RAID_RESPONSE_WINDOW,()=>0)
   const won=s.raidReports[0]
@@ -820,27 +951,28 @@ test('驻军全员在兵工厂工作时村庄失守，人员撤离停工，设�
   assert.deepEqual(normalizeSave(s),s)
 })
 
-test('村庄自动应敌同时调动排和缺枪的连，只扣除厂房医疗的实际在岗人数',()=>{
-  for(const facility of ['armory','medical']){
-    const s=freshSave(),g=game(s)
-    s.troops=150;s.cookedRice=100
-    assert(setFormation(s,'platoon',30).ok)
-    assert(setFormation(s,'company',100,null,{rifle:20}).ok)
-    assert(stationTroops(s,1,[1,2]).ok);assert(placeVillageFacility(s,facility,1).ok)
-    const allocation=[{unitId:2,troops:10,type:'group'}]
-    const task=facility==='armory'?startProduction(s,[2],'rifle',1,allocation):startTreatment(s,'light',[2],1,allocation)
-    assert(task.ok,task.message)
-    g.updateLogistics(RAID_INTERVAL,()=>0)
-    const alert=s.raidAlerts[0],deployment=raidDeployment(s,alert.id)
-    assert.deepEqual(deployment.units.map(unit=>[unit.id,unit.troops]),[[1,30],[2,90]])
-    assert.equal(deployment.unarmedTroops,70)
-    g.updateLogistics(RAID_RESPONSE_WINDOW,()=>0)
-    assert.equal(s.raidReports[0].deployedTroops,120)
-    assert.equal(s.raidReports[0].unarmedTroops,70)
-    assert.equal(s.formations.find(unit=>unit.id===2).troops>=10,true)
-    assert.equal((facility==='armory'?s.armoryTasks.rifle:s.medicalTasks.light).workers,10)
-    assert.deepEqual(normalizeSave(s).raidReports,s.raidReports)
-  }
+test('村庄自动应敌同时调动排和缺枪的连，只排除兵工厂的实际在岗人数',t=>{
+  t.mock.method(Math,'random',()=>.5)
+  const s=freshSave(),g=game(s)
+  s.troops=150;s.bullets=20000;s.cookedRice=100
+  assert(setFormation(s,'platoon',30).ok)
+  assert(setFormation(s,'company',100,null,{rifle:20}).ok)
+  assert(stationTroops(s,1,[1,2]).ok);assert(placeVillageFacility(s,'armory',1).ok)
+  const allocation=[{unitId:2,troops:10,type:'group'}]
+  const task=startProduction(s,[2],'rifle',1,allocation)
+  assert(task.ok,task.message)
+  g.updateLogistics(RAID_INTERVAL,()=>0)
+  const alert=s.raidAlerts[0],deployment=raidDeployment(s,alert.id)
+  assert.deepEqual(deployment.units.map(unit=>[unit.id,unit.troops]),[[1,30],[2,90]])
+  assert.equal(deployment.unarmedTroops,70)
+  g.updateLogistics(RAID_RESPONSE_WINDOW,()=>0)
+  assert.equal(s.raidReports[0].deployedTroops,120)
+  assert.equal(s.raidReports[0].unarmedTroops,70)
+  assert.equal(s.formations.find(unit=>unit.id===2).troops>=10,true)
+  const staffed=s.armoryTasks.rifle
+  if(s.raidReports[0].occupied)assert(!staffed)
+  else assert.equal(staffed.workers,10)
+  assert.deepEqual(normalizeSave(s).raidReports,s.raidReports)
 })
 
 test('本村待命分队与上级一起防守，外出代耕人员避开战损并在失守后撤回',()=>{
@@ -858,7 +990,7 @@ test('本村待命分队与上级一起防守，外出代耕人员避开战损�
   assert.match(second.message,/可派人数不足/)
   for(const unit of b.units)unit.hp=0
   b.done=true;b.won=false;g.finish()
-  assert.equal(g.result.directDeaths,33);assert.equal(s.weaponCounts.rifle,87)
+  assert.equal(g.result.lostTroops,33);assert.equal(s.weaponCounts.rifle,87)
   assert.equal(s.formations.find(unit=>unit.id===1).troops,7);assert.equal(farmTaskAt(s,field.id),null)
   assert.equal(formationActivity(s,1),null);assert.equal(regionOwner(s,1),'enemy')
 })
@@ -869,7 +1001,7 @@ test('驻军全灭扣兵扣枪且不产生伤员，清除据点驻防',()=>{
   const alert=advanceRaids(s,RAID_INTERVAL,()=>0).alert
   g.beginRaid(alert.id)
   const b=g.battle;b.units[0].hp=0;b.done=true;b.won=false;g.finish()
-  assert.equal(g.result.directDeaths,10);assert.equal(g.result.woundedLight,0);assert.equal(g.result.woundedHeavy,0)
+  assert.equal(g.result.lostTroops,10)
   assert.equal(s.troops,110);assert.equal(s.weaponCounts.rifle,110)
   assert.deepEqual(s.raidAlerts,[]);assert.deepEqual(regionRecord(s,mountain.id).garrisonIds,[])
   assert.equal(regionOwner(s,mountain.id),'enemy');assert.equal(regionEnemyTroops(s,mountain.id),alert.force)
@@ -887,7 +1019,7 @@ test('原排与一个分队同时阵亡时，仍在别村生产的2班继承1排
   assert.deepEqual(battle.units.map(unit=>unit.id),[1,fallen.id])
   for(const actor of battle.units)actor.hp=0
   g.updateBattle(.05)
-  assert.equal(g.result.directDeaths,30);assert.equal(s.troops,90);assert.equal(s.weaponCounts.rifle,90)
+  assert.equal(g.result.lostTroops,30);assert.equal(s.troops,90);assert.equal(s.weaponCounts.rifle,90)
   assert.deepEqual(s.formations.map(unit=>unit.id),[survivor.id]);assert.equal(formationName(survivor),'1排')
   assert.equal(survivor.type,'platoon');assert.equal(survivor.troops,10);assert.equal(survivor.weapons.rifle,10);assert.equal(survivor.trainingXp,460)
   assert.equal(survivor.splitParent,undefined);assert.deepEqual(s.garrisons[2],[survivor.id]);assert.deepEqual(s.armoryTasks.rifle.unitIds,[survivor.id])

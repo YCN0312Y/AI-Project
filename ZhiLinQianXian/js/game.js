@@ -3,24 +3,24 @@ import { MAP_CORE,MAP_BOUNDS,MAP_VIEW,MAP_LOCAL_VILLAGES,MAP_REGIONS,MAP_REGION_
 import {regionRecord,regionUnits,regionLocalUnits,regionEnemyTroops,regionOwner,regionDispatch,occupyRegion,recallRegion,resolveRegionBattle} from './regions.js'
 import {startMarch,startGarrisonTransfer,advanceMarches,marchPosition,marchTarget,routeLength,MARCH_SPEED,takeMarchBattle} from './marching.js'
 import {farmTravelPosition,farmRouteLength,FARM_TRAVEL_SPEED} from './farm-travel.js'
-import { SAVE_KEY,MODES,GOODS,MISSIONS,FORMATION_TYPES,normalizeSave,rank,rankProgress,formation,baseForces,formationName as unitName,lineageRows,formationRoots,formationPool,formationParent,previewFormationMerge,mergeFormations,unmergeFormation,formationResources,autoFormationWeapons,formationMinimum,validateFormation,setFormation,removeFormation,garrisonSplitTypes,splitGarrisonUnit,purchase,purchaseWeapon,claim,settle,applyBattleLosses,applyWarehouseFoodAdjustment,applyRequestedRiceSupply } from './state.js'
+import { SAVE_KEY,MODES,GOODS,MISSIONS,FORMATION_TYPES,normalizeSave,formation,baseForces,formationName as unitName,lineageRows,formationRoots,formationPool,formationParent,previewFormationMerge,mergeFormations,unmergeFormation,formationResources,autoFormationWeapons,formationMinimum,validateFormation,setFormation,removeFormation,garrisonSplitTypes,splitGarrisonUnit,purchase,purchaseWeapon,claim,settle,applyBattleLosses,applyWarehouseFoodAdjustment,applyRequestedRiceSupply } from './state.js'
 import { WEAPONS,weaponById } from './weapons.js'
 import { Battle } from './battle.js'
 import { CampaignBattle,campaignDeployment } from './campaign.js'
 import { reinforcementCapacity,reinforcementWeapons,validateReinforcement,reinforceFormation,formationEditActivity,rejoinFormation,syncIdleBranches,formationOccupancy } from './state.js'
-import { chooseStartingBase,missionProgress } from './state.js'
+import { chooseStartingBase,baseRelocationError,relocateBase,missionProgress } from './state.js'
 import { FOODS,FISH,DISHES,RECRUITMENT,RATIONS,foodStock,rationStock,mealCost,recruitmentInterval,validateDonation,mobilizationStatus,donationTaste,validateCooking,cookDish,hungerStatus,recruitmentFoodCost,mobilizationRecord,migrateVillageMobilization,serveMealNow,enableAllVillageMobilization,setAllVillagesMobilizing,donateAllVillages } from './logistics.js'
 import { TRAINING_XP,trainingDuration,trainingStatus,startTrainingTask,cancelTrainingTask,completeTraining,trainedCombatGroups,trainingTaskAt } from './training.js'
-import {stationTroops,recallGarrison,placeVillageFacility,removeVillageFacility,villageUnits,villageLocalUnits,villageOfFormation,villageName,isVillage,villageControlled,villageEnemyTroops,villageRegionId,controlledVillages,garrisonedVillages} from './villages.js'
-import {availableWorkforce,dutyTypes,DUTY_TYPES} from './workforce.js'
+import {stationTroops,recallGarrison,placeVillageFacility,removeVillageFacility,armoryTransferError,transferArmory,villageUnits,villageLocalUnits,villageOfFormation,villageName,isVillage,villageControlled,villageEnemyTroops,villageRegionId,controlledVillages,garrisonedVillages} from './villages.js'
+import {availableWorkforce,dutyTypes,DUTY_TYPES,PROJECT_UNIT_LIMIT,taskWorkersFrom} from './workforce.js'
 import {populationRule,villagePopulation} from './population.js'
 import { syncShop,purchaseQuote,shopAvailable,shopSells } from './shop.js'
-import { FARM,fieldCooldown,CROPS,helpHarvestYield,farmWorkers,farmTasks,farmTaskAt,startFarming,cancelFarming,formationActivity,activityLabel,assignFormations,releaseFormations } from './base.js'
+import { FARM,fieldCooldown,CROPS,helpHarvestYield,farmWorkers,farmTasks,farmTaskAt,farmLocalUnits,farmReserveAvailable,startFarming,cancelFarming,formationActivity,activityLabel,assignFormations,releaseFormations } from './base.js'
 import { advanceEconomy } from './economy.js'
-import {PRODUCTS,BANDAGE_PRODUCT,BANDAGE_INTERVAL,WARDS,facilityInterval,facilityRunning,productionInventory,productionCapacity,startProduction,startBandageProduction,startTreatment,recallFacility,recoverPendingBattleCasualties} from './facilities.js'
+import {PRODUCTS,FACILITY_INTERVAL,facilityRunning,productionInventory,productionCapacity,startProduction,recallFacility} from './facilities.js'
 import {MATERIALS,MATERIAL_LIMIT,GATHER_INTERVAL,gatheringOptions,gatheringName,gatheringStock,gatheringEntries,availableGatheringUnits,startGathering,stopGathering} from './gathering.js'
 import {RAID_ALERT_LIMIT,advanceRaids,raidSite,raidOrigin,raidApproaching,raidMarch,raidReportStatus,raidRepelled,raidDeployment,assignRaidDefenders,makeRaidBattle,autoDefendRaid,finishRaid} from './raids.js'
-import { initMusic,setMusicEnabled,updateMusic,unlockMusic,pumpMusic } from './music.js'
+import { initMusic,setMusicEnabled,setMusicPaused,updateMusic,unlockMusic,pumpMusic } from './music.js'
 const inside=(p,b)=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h
 const number=value=>value.toLocaleString()
 const gatheringAction=id=>id===FISH.id?'捕鱼':`采集${gatheringName(id)}`
@@ -44,7 +44,6 @@ function formationRosterRows(s,units){
     return [{...row,indent:Math.min(84,Math.max(depth,rootLevel-levelOf(unit))*step)}]
   })
 }
-const hasFullArms=unit=>Object.values(unit.weapons).reduce((sum,count)=>sum+count,0)===unit.troops
 function deploymentTiers(s){
   const units=new Map(s.formations.map(unit=>[unit.id,unit]))
   const mergedParents=new Map(s.formations.flatMap(unit=>(unit.children||[]).map(id=>[id,unit])))
@@ -81,7 +80,7 @@ function visibleRosterRows(rows,collapsed){
   })
   return visible
 }
-function dispatchRows(s,requiresArms){
+function dispatchRows(s,combat,fromGarrison=false){
   const gatheringLabels=new Map(),tierOf=deploymentTiers(s)
   for(const [siteId,task] of gatheringEntries(s)){
     const location=mapRegion(siteId)?.name,label=`${location?location+' · ':''}${gatheringAction(task.material)}`
@@ -89,10 +88,12 @@ function dispatchRows(s,requiresArms){
   }
   return lineageRows(formationRoots(s)).map(({unit,depth})=>{
     const activity=formationActivity(s,unit.id),station=villageOfFormation(s,unit.id)
-    const canSplit=['garrison','region'].includes(activity)&&garrisonSplitTypes(s,unit).length>0
-    const ready=!activity&&(!requiresArms||hasFullArms(unit))
+    const stationed=['garrison','region'].includes(activity)
+    const canSplit=stationed&&garrisonSplitTypes(s,unit).length>0
+    const ready=!activity||fromGarrison&&stationed
     const activityStatus=activity==='gathering'?gatheringLabels.get(unit.id)||activityLabel(activity):activityLabel(activity)
-    const status=activity?`${station?villageName(station)+' · ':''}${activityStatus}`:ready?(requiresArms?'待命 · 可出战':'待命 · 可调入'):'未配齐武器'
+    const ranged=combat&&WEAPONS.reduce((sum,weapon)=>sum+(s[weapon.ammo]>0?unit.weapons[weapon.id]:0),0)
+    const status=activity?`${station?villageName(station)+' · ':''}${activityStatus}`:!combat?'待命 · 可调入':!ranged?'待命 · 仅近战':ranged<unit.troops?`待命 · ${unit.troops-ranged} 人近战`:'待命 · 可出战'
     return {unit,depth,canSplit,ready,status,tier:tierOf(unit)}
   })
 }
@@ -145,15 +146,17 @@ export class Game {
     try{stored=wx.getStorageSync(SAVE_KEY);this.save=normalizeSave(stored)}catch{this.save=normalizeSave(null)}
     const adjusted=!!stored&&applyWarehouseFoodAdjustment(this.save)
     const supplied=!!stored&&options.applyRequestedRiceSupply===true&&applyRequestedRiceSupply(this.save)
-    const recovered=!!stored&&recoverPendingBattleCasualties(this.save)
+    const removedMedical=!!stored&&Object.hasOwn(stored,'wounded')
     const migrated=!!stored&&migrateVillageMobilization(this.save)
     const renumbered=!!stored&&stored.formationNumberVersion!==this.save.formationNumberVersion
+    const mergedBullets=!!stored&&!Number.isFinite(stored.bullets)
+    const removedMerit=!!stored&&Object.hasOwn(stored,'xp')
     const globalized=enableAllVillageMobilization(this.save)
     this.choosingBase=this.save.baseVillageId===null
     this.scene='world-map';this.mapSelected=this.choosingBase?null:'base'
     this.mapCamera=this.choosingBase?fitCamera({}):createCamera(mapBase(this.save))
     this.modal=null;this.buttons=[];this.dirty=true;this.toast=null;this.pressed=false;this.last=0;this.acc=0;this.training=null
-    if(adjusted||supplied||recovered||migrated||renumbered||stored&&(globalized||stored.baseVillageId!==this.save.baseVillageId))this.persist()
+    if(adjusted||supplied||removedMedical||migrated||renumbered||mergedBullets||removedMerit||stored&&(globalized||stored.baseVillageId!==this.save.baseVillageId))this.persist()
     this.resize();wx.onWindowResize?.(()=>this.resize())
     initMusic(this.save);updateMusic(this.scene,true)
     wx.onTouchStart(e=>this.touch(e));wx.onTouchMove(e=>this.touchMove(e))
@@ -182,6 +185,7 @@ export class Game {
   }
   cancelTouch(){this.pressed=false;this.mapGesture=null;this.rosterGesture=null}
   touchMove(e){
+    if(this.paused)return
     const gesture=this.rosterGesture
     if(gesture){
       const p=this.point(e)
@@ -195,6 +199,7 @@ export class Game {
   }
   touchEnd(e){
     this.pressed=false
+    if(this.paused)return
     if(this.rosterGesture){
       const gesture=this.rosterGesture,p=this.point(e)
       this.rosterGesture=null
@@ -247,6 +252,7 @@ export class Game {
     this[state.key]=Math.min(state.max,Math.max(0,offset));this.dirty=true
   }
   mouseWheel(e){
+    if(this.paused)return true
     const p=this.inputPoint(e),list=this.rosterScroll
     if(list&&this.modal===list.source&&inside(p,list.view)){
       const delta=e.deltaY*(e.deltaMode===1?16/(this.scale||1):e.deltaMode===2?list.view.h:1/(this.scale||1))
@@ -261,6 +267,11 @@ export class Game {
   touch(e){
     unlockMusic()
     const p=this.point(e);if(!p)return
+    if(this.paused){
+      if(e.touches.length>1)return
+      const b=[...this.buttons].reverse().find(b=>inside(p,b));if(b){b.fn();this.dirty=true}
+      return
+    }
     if(this.rosterGesture){if(e.touches.length>1)this.rosterGesture.cancelled=true;return}
     const list=this.rosterScroll
     if(list&&this.modal===list.source&&inside(p,list.view)){
@@ -284,13 +295,20 @@ export class Game {
     text(c,label,x+w/2+(symbol?9:0),y+h/2,21,color,600,'center')
     this.buttons.push({id,x,y,w,h,fn})
   }
+  togglePause(){
+    this.paused=!this.paused
+    if(this.paused){this.cancelTouch();if(this.modal==='settings')this.modal=null}
+    setMusicPaused(this.paused)
+    this.dirty=true
+    this.notify(this.paused?'游戏已暂停 · 所有操作已锁定':'游戏已继续')
+  }
   tick(now){
     pumpMusic()
     const activeElapsed=this.last?Math.min(60,Math.max(0,(now-this.last)/1000)):0
     const elapsed=Math.min(.05,activeElapsed);this.last=now
-    if(this.logisticsActive&&!this.choosingBase){this.updateLogistics(activeElapsed);this.updateMapMarches(activeElapsed)}
+    if(this.logisticsActive&&!this.choosingBase&&!this.paused){this.updateLogistics(activeElapsed);this.updateMapMarches(activeElapsed)}
     if(this.toast&&Date.now()>this.toast.until){this.toast=null;this.dirty=true}
-    if(this.scene==='battle'&&!this.modal)this.updateBattle(elapsed)
+    if(this.scene==='battle'&&!this.modal&&!this.paused)this.updateBattle(elapsed)
     this.acc+=elapsed
     const frameInterval=this.scene==='battle'?1/60:this.scene==='world-map'&&(this.save.marchingOrders?.length||Object.keys(this.save.fieldFarmTasks).length||!this.modal&&this.save.raidAlerts.length)?1/30:0
     if(this.dirty&&this.acc>=frameInterval-.002){this.render();this.acc=0;this.dirty=false}
@@ -309,7 +327,7 @@ export class Game {
     if(branchMoved)this.dirty=true
     const returnedFarms=result.returnedFarms
     if(returnedFarms.length||this.scene==='world-map'&&!this.modal&&Object.keys(this.save.fieldFarmTasks).length)this.dirty=true
-    const facilityEvent=result.produced.length||result.gathered.length||result.treated.length||result.training
+    const facilityEvent=result.produced.length||result.gathered.length||result.training
     if(result.training){this.trainingResult=result.training;this.training=null}
     const restocked=syncShop(this.save)
     const hunger=hungerStatus(this.save)
@@ -317,7 +335,7 @@ export class Game {
     this.logisticsSaveElapsed=(this.logisticsSaveElapsed||0)+seconds
     this.logisticsDrawElapsed=(this.logisticsDrawElapsed||0)+seconds
     const raidCountdown=this.scene==='world-map'&&this.save.raidAlerts.length&&(!this.modal||this.modal==='raid')&&this.logisticsDrawElapsed>=1
-    if(raidCountdown||result.recruited||result.meals||result.populationGrown||result.harvests.length||facilityEvent||restocked||((['village','recruitment','farm','gathering','base-armory','base-medical','training'].includes(this.modal)&&this.logisticsDrawElapsed>=.2||this.modal==='shop'&&this.logisticsDrawElapsed>=1||this.scene==='world-map'&&!this.modal&&Object.keys(this.save.fieldCooldowns||{}).length>0&&this.logisticsDrawElapsed>=1))){this.dirty=true;this.logisticsDrawElapsed=0}
+    if(raidCountdown||result.recruited||result.meals||result.populationGrown||result.harvests.length||facilityEvent||restocked||((['village','recruitment','farm','gathering','base-armory','training'].includes(this.modal)&&this.logisticsDrawElapsed>=.2||this.modal==='shop'&&this.logisticsDrawElapsed>=1||this.scene==='world-map'&&!this.modal&&Object.keys(this.save.fieldCooldowns||{}).length>0&&this.logisticsDrawElapsed>=1))){this.dirty=true;this.logisticsDrawElapsed=0}
     if(raids.changed||raidReports.length||branchMoved||returnedFarms.length||result.recruited||result.meals||result.harvests.length||facilityEvent||restocked||this.logisticsSaveElapsed>=5){this.persist();this.logisticsSaveElapsed=0}
     if(raids.alert)this.notify(`${raidSite(raids.alert.siteId).name}遭到敌袭 · ${raidOrigin(raids.alert).name}出兵 ${raids.alert.force} 人`)
     else if(raidReports.length)this.notify(raidReports.map(report=>raidSite(report.siteId).name+' · '+raidReportStatus(report)).join('、'))
@@ -339,12 +357,11 @@ export class Game {
     }
     else if(returnedFarms.length)this.notify('代耕分队已返回'+[...new Set(returnedFarms.map(task=>villageName(task.villageId)))].join('、')+'归队')
     else if(result.recruited)this.notify(`乡亲报名 +${result.recruited} 人`)
-    else if(result.produced.length)this.notify('生产入库 · '+result.produced.map(item=>[...PRODUCTS,BANDAGE_PRODUCT].find(p=>p.id===item.product).name+' +'+item.amount).join(' · '))
+    else if(result.produced.length)this.notify('生产入库 · '+result.produced.map(item=>PRODUCTS.find(p=>p.id===item.product).name+' +'+item.amount).join(' · '))
     else if(result.gathered.length){
       const label=result.gathered.every(item=>item.material===FISH.id)?'捕鱼入库':'采集入库'
       this.notify(label+' · '+result.gathered.map(item=>gatheringName(item.material)+' +'+item.amount).join(' · '))
     }
-    else if(result.treated.length)this.notify('本轮治疗完成 · 康复 '+result.treated.reduce((n,item)=>n+item.healed,0)+' 人 · 死亡 '+result.treated.reduce((n,item)=>n+item.dead,0)+' 人')
     else if(result.meals&&this.save.lastMealShortage>0)this.notify(`本餐还缺 ${this.save.lastMealShortage} 份熟食，请补充食材或到灶房做饭`)
   }
   open(name){
@@ -357,7 +374,7 @@ export class Game {
     if(name==='village-station'){this.stationSelected=[];this.stationScroll=0;this.stationCollapsed=new Set();this.stationTier='all'}
     if(name==='warehouse'||name==='shop'){this.inventoryTab='weapons';this.goodsPage=0;if(name==='shop'&&syncShop(this.save))this.persist()}
     if(name==='farm'){this.farmSelected=[];this.farmPage=0;this.farmFieldId=null;this.farmReturnToMap=false}
-    if(['base-armory','base-medical'].includes(name)){this.facilitySelected=[];this.facilityPage=0;this.factoryProduct=PRODUCTS.find(p=>this.save.armoryTasks[p.id])?.id||'rifle';this.medicalWard='light'}
+    if(name==='base-armory'){this.setFacilityStaffing();this.factoryProduct=PRODUCTS.find(p=>this.save.armoryTasks[p.id])?.id||'rifle'}
     if(name==='formation')this.formationListType=null
     if(name==='training'){this.trainingPage=0;const roots=this.localVillage?lineageRows(villageLocalUnits(this.save,this.localVillage)).map(r=>r.unit):formationRoots(this.save);if(!roots.some(u=>u.id===this.trainingSelectedId&&!formationActivity(this.save,u.id,!!this.localVillage)))this.trainingSelectedId=roots.find(u=>!formationActivity(this.save,u.id,!!this.localVillage))?.id}
     if(name==='recruitment'){this.recruitQuantity=20;this.recruitFoodId=FOODS.find(food=>this.save[food.id]>0)?.id||FOODS[0].id}
@@ -374,7 +391,7 @@ export class Game {
       if(!deployment.ok){this.notify(deployment.message);return}
       if(!assignFormations(this.save,unitIds,'battle')){this.notify('部队正在执行其他任务，请等待归队');return}
       this.scene='battle';this.modal=null;this.result=null;this.pressed=false;this.battleRosterPage=0
-      this.battle=new CampaignBattle(level,deployment.units);this.syncBattleReadiness();updateMusic(this.scene);this.dirty=true;return
+      this.battle=new CampaignBattle(level,deployment.units,null,this.save);this.syncBattleReadiness();updateMusic(this.scene);this.dirty=true;return
     }
     const f=formation(this.save)
     if(!f.armedTroops){this.notify('请先在「我的部队」中添加编制，再部署出战');return}
@@ -386,7 +403,8 @@ export class Game {
     this.openWorldMap();this.modal='campaign-deploy';this.deploymentLevel=level;this.deploymentIds=[];this.deploymentScroll=0;this.deploymentCollapsed=new Set();this.deploymentTier='all';this.pressed=false;this.dirty=true
   }
   toggleDeployment(id){
-    if(formationActivity(this.save,id)){this.notify('该部队正在执行任务，归队后才能出战');return}
+    const attacking=regionEnemyTroops(this.save,this.deploymentRegionId)>0
+    if(formationActivity(this.save,id,attacking)){this.notify('该部队正在执行任务，归队后才能出战');return}
     const index=this.deploymentIds.indexOf(id)
     if(index>=0)this.deploymentIds.splice(index,1)
     else this.deploymentIds.push(id)
@@ -395,13 +413,14 @@ export class Game {
   drawCampaignDeployment(){
     const c=this.ctx,s=this.save
     const region=mapRegion(this.deploymentRegionId),enemy=region&&regionEnemyTroops(s,region.id)
-    const rows=dispatchRows(s,!region||enemy>0),{ids,total}=dispatchSelection(rows,this.deploymentIds)
+    const rows=dispatchRows(s,!region||enemy>0,enemy>0),{ids,total}=dispatchSelection(rows,this.deploymentIds)
     const tier=this.deploymentTier||'all',visible=filterDispatchRows(rows,tier)
     const readyIds=visible.filter(row=>row.ready).map(({unit})=>unit.id),empty=!rows.length
     text(c,region?`${region.name} · ${enemy?'进攻':'派驻'}部队`:`第 ${this.deploymentLevel} 关 · 派出部队`,312,275,23,C.ink,700)
     if(readyIds.length)this.button('deployment-all',864,260,125,37,tier==='all'?'全选可派':'全选本级',()=>{this.deploymentIds=[...new Set([...this.deploymentIds,...readyIds])]},'light')
     this.button('deployment-clear',1001,260,124,37,'清空选择',()=>{this.deploymentIds=[]},'light')
-    const readyHint=region?enemy?'战斗胜利后，幸存部队留在目标驻防。':'确认后从根据地出发，到达再驻防。':hungerStatus(s).disabled?'极度饥饿仍可出战，火力、射速和移动速度下降。':null
+    const combatHint=hungerStatus(s).disabled?'极度饥饿削弱战力 · 缺弹或无枪时近战。':'战斗消耗仓库弹药，缺弹或无枪时近战。'
+    const readyHint=enemy?'勾选可整支出击，也可分出部分。缺弹或无枪时近战。':region?'确认后出发，到达后驻防。':combatHint
     this.drawDispatchList('deployment',rows,ids,total,'campaign-deploy',id=>this.toggleDeployment(id),readyHint)
     this.button('deployment-back',312,615,230,42,region?'返回地区':'返回大地图',()=>region?this.openRegion(region.id):this.open('campaign'),'light')
     this.button('deployment-confirm',565,615,560,42,ids.length?`确认${region&&!enemy?'派驻':'出战'} · ${ids.length} 支 / ${number(total)} 人`:empty?'前往我的部队':'请选择派遣部队',()=>{
@@ -454,7 +473,7 @@ export class Game {
         if(chosen)text(c,'✓',x+23,y+21,16,C.paper,700,'center')
         this.buttons.push({id:prefix+'-unit-'+unit.id,x,y,w:right-x,h:DISPATCH_CARD_HEIGHT,fn:()=>onSelect(unit.id)})
       }
-      const labelX=x+(ready?43:15)
+      const labelX=x+43
       if(hasChildren){
         text(c,folded?'▸':'▾',labelX,y+21,18,C.olive,700)
         const toggleX=ready?x+38:x
@@ -484,9 +503,11 @@ export class Game {
   }
   updateBattle(dt){
     this.syncBattleReadiness()
+    const ammoBefore=this.battle.ammoSpent
     this.battle.update(dt)
     const lost=applyBattleLosses(this.save,this.battle)
-    if(lost){this.persist();this.notify(`部队退出战斗 · 减员 ${lost} 人，战后判定阵亡与伤员`)}
+    if(lost||this.battle.ammoSpent!==ammoBefore)this.persist()
+    if(lost)this.notify(`部队退出战斗 · 减员 ${lost} 人`)
     this.dirty=true;if(this.battle.done)this.finish()
   }
   finish(){
@@ -513,7 +534,7 @@ export class Game {
     if(!cancelTrainingTask(this.save,this.localVillage||null))return
     this.training=null;this.persist();this.notify(this.localVillage?'已停止训练，部队留在本村，本轮不发经验':'参训部队已召回，本轮不发经验');this.dirty=true
   }
-  rename(){wx.showModal({title:'修改指挥官名称',editable:true,content:this.save.name,placeholderText:'输入名称，最多 12 个字',maxLength:12,success:r=>{
+  rename(){wx.showModal({title:'修改名称',editable:true,content:this.save.name,placeholderText:'输入名称，最多 12 个字',maxLength:12,success:r=>{
     if(!r.confirm)return
     const name=r.content?.trim()
     if(!name){this.notify('名称不能为空');return}
@@ -526,11 +547,19 @@ export class Game {
     this.buttons=[]
     if(this.scene==='lobby')this.drawLobby();else if(this.scene==='world-map')this.drawWorldMap();else this.drawBattle()
     if(this.modal){this.buttons=[];box(c,0,0,1440,810,'rgba(17,30,24,.72)');this.drawModal()}
+    if(this.paused){
+      this.buttons=[]
+      box(c,0,0,1440,810,'rgba(12,20,16,.86)')
+      box(c,460,260,520,290,C.panel,2,C.gold);brackets(c,460,260,520,290,C.gold)
+      text(c,'游戏已暂停',720,332,32,C.ink,800,'center')
+      text(c,'时间与所有操作已锁定，点击下方按钮恢复游戏',720,388,16,C.muted,500,'center')
+      this.button('game-resume',550,446,340,58,'继续游戏',()=>this.togglePause(),'accent')
+    }
     if(this.toast){box(c,430,30,580,48,C.panel,2,C.gold);text(c,this.toast.message,720,54,17,'#fff6d8',500,'center')}
     c.restore()
   }
   openWorldMap(){
-    this.scene='world-map';this.modal=null;this.localVillage=null;this.garrisonTransfer=null;this.cancelTouch()
+    this.scene='world-map';this.modal=null;this.localVillage=null;this.garrisonTransfer=null;this.relocatingBase=false;this.relocatingArmory=false;this.cancelTouch()
     if(!this.choosingBase)this.mapSelected=mapLocation(this.mapSelected,this.save).id
     this.mapCamera||=this.choosingBase?fitCamera({}):createCamera(mapBase(this.save))
     updateMusic(this.scene);this.dirty=true
@@ -539,6 +568,18 @@ export class Game {
     if(!this.choosingBase||!chooseStartingBase(this.save,this.mapSelected))return
     this.choosingBase=false;this.mapSelected='base';this.mapCamera=createCamera(mapBase(this.save))
     this.persist();this.notify('根据地已设在'+mapBase(this.save).name)
+  }
+  openBaseRelocation(villageId=null){
+    this.openWorldMap()
+    this.relocatingBase=true;this.mapSelected=villageId
+  }
+  confirmBaseRelocation(){
+    if(!this.relocatingBase)return
+    const result=relocateBase(this.save,this.mapSelected)
+    if(!result.ok){this.notify(result.message);return}
+    const home=mapBase(this.save)
+    this.openWorldMap();this.mapSelected='base';focusCamera(this.mapCamera,home)
+    this.persist();this.notify('根据地中心已迁至'+home.name)
   }
   openVillage(id){
     if(!isVillage(id))return
@@ -554,7 +595,7 @@ export class Game {
   openMapField(id){
     if(this.garrisonTransfer){this.notify('请选择目的地的村庄或据点图标');return}
     const field=mapField(id);if(!field)return
-    if(!villageControlled(this.save,field.villageId)){this.notify('需要先占领并驻军「'+villageName(field.villageId)+'」，才能耕种它的田地');return}
+    if(!farmTaskAt(this.save,id)&&!villageControlled(this.save,field.villageId)){this.notify('需要先占领并驻军「'+villageName(field.villageId)+'」，才能耕种它的田地');return}
     this.mapSelected=field.villageId;this.open('farm');this.farmReturnToMap=true
     this.farmFieldId=id
   }
@@ -583,8 +624,8 @@ export class Game {
     this.garrisonTransfer={unitId,originId};this.mapSelected=originId
   }
   selectGarrisonTransferTarget(id){
+    id=mapVillage(id)?.regionId??id
     if(id===this.garrisonTransfer.originId||!mapRegion(id)){this.notify('请选择另一处村庄或据点');return}
-    if(regionEnemyTroops(this.save,id)>0){this.notify('该据点由敌军占领，请选择可进驻的地点');return}
     this.garrisonTransfer.targetId=id;this.mapSelected=id;this.open('garrison-transfer')
   }
   cancelGarrisonTransfer(){
@@ -596,9 +637,10 @@ export class Game {
   drawGarrisonTransfer(){
     const c=this.ctx,s=this.save,{originId,targetId,unitId}=this.garrisonTransfer
     const origin=mapRegion(originId),target=mapRegion(targetId),unit=regionUnits(s,originId).find(unit=>unit.id===unitId)
+    const enemies=regionEnemyTroops(s,targetId)
     text(c,`${origin.name} → ${target.name}`,312,318,30,C.ink,700)
     text(c,unit?`${unitName(unit)} · ${number(unit.troops)} 人`:'部队已离开原驻地',312,370,20,unit?C.olive:C.gold,600)
-    text(c,'部队将从原驻地沿道路出发，抵达后开始驻防。',312,424,17,C.muted)
+    text(c,enemies?`敌军驻防 ${number(enemies)} 人 · 抵达即进入战斗，胜利后驻防。`:'部队将从原驻地沿道路出发，抵达后开始驻防。',312,424,17,enemies?C.gold:C.muted)
     this.button('transfer-reselect',312,615,220,42,'重新选地点',()=>{this.modal=null},'light')
     this.button('transfer-confirm',827,615,298,42,'确认转移',()=>{
       const result=startGarrisonTransfer(s,unitId,originId,targetId)
@@ -615,7 +657,7 @@ export class Game {
       this.persist();this.openRegion(id);this.notify(stationed.message);return
     }
     if(!assignFormations(this.save,ids,'battle')){this.notify('所选部队已被占用');return}
-    this.battle=new CampaignBattle(1,result.units,regionRecord(this.save,id).enemies)
+    this.battle=new CampaignBattle(1,result.units,regionRecord(this.save,id).enemies,this.save)
     this.battle.regionId=id;this.battle.regionName=mapRegion(id).name;this.battle.regionDeployedIds=[...ids]
     this.scene='battle';this.modal=null;this.result=null;this.battleRosterPage=0;this.pressed=false;this.syncBattleReadiness();updateMusic(this.scene);this.dirty=true
   }
@@ -640,7 +682,7 @@ export class Game {
     const deployment=raidDeployment(this.save,id)
     if(!deployment.ok){this.notify(deployment.message);return}
     if(!assignRaidDefenders(this.save,deployment)){this.notify('驻军状态已变化，请重新查看警报');return}
-    this.battle=makeRaidBattle(deployment)
+    this.battle=makeRaidBattle(deployment,this.save)
     this.scene='battle';this.modal=null;this.result=null;this.battleRosterPage=0;this.pressed=false;this.syncBattleReadiness()
     this.persist()
     updateMusic(this.scene)
@@ -681,8 +723,8 @@ export class Game {
       if(origin||garrison)text(c,(origin?`敌军出发地 · ${origin.name}`:'占领情况')+garrison,312,381,16,C.blue,600)
       if(report.outcome==='undefended')text(c,'本次没有可出战的驻地人员。',312,420,18,C.muted)
       else{
-        text(c,`击败敌军 ${report.kills} 人 · 战损 ${report.lostTroops} 人 · 阵亡 ${report.directDeaths} 人 · 轻伤 ${report.woundedLight} 人 · 重伤 ${report.woundedHeavy} 人`,312,410,18,C.ink)
-        text(c,`金币 +${report.coins} · 军功 +${report.xp}`,312,452,18,C.gold)
+        text(c,`击败敌军 ${report.kills} 人 · 我方伤亡 ${report.lostTroops} 人`,312,410,18,C.ink)
+        text(c,`金币 +${report.coins}`,312,452,18,C.gold)
         const captured=WEAPONS.filter(weapon=>report.capturedWeapons[weapon.id]>0).map(weapon=>`${weapon.name} ×${report.capturedWeapons[weapon.id]}`).join(' · ')
         if(captured)text(c,'缴获入库 · '+captured,312,494,17,C.olive)
       }
@@ -690,13 +732,14 @@ export class Game {
       return
     }
     if(!info.site){text(c,'这条驻地警报已解除。',720,410,24,C.muted,600,'center');return}
-    box(c,312,269,813,138,C.raised,2,C.line)
+    box(c,312,269,813,160,C.raised,2,C.line)
     const origin=raidOrigin(info.alert),approaching=raidApproaching(info.alert)
     text(c,`${info.site.name} · ${approaching?'敌军行军中':'交战中'}`,334,293,25,C.ink,700)
     text(c,`${origin?`来自 ${origin.name} · `:''}来敌 ${info.alert.force} 人`,334,325,19,C.blue,600)
     const unarmed=info.unarmedTroops?`（${number(info.unarmedTroops)} 人无武器）`:''
     text(c,`我方可出战 ${info.units.length} 支 / ${number(info.troops)} 人${unarmed}`,334,356,19,C.gold,600)
-    text(c,info.site.type==='village'?'村内士兵参战，兵工厂、医疗部人员继续工作；外出人员归队后才能参战。':'空闲且配齐武器的本地驻军参战。',334,384,15,C.muted)
+    text(c,info.site.type==='village'?'村内可用士兵参战，兵工厂人员继续工作。':'本地驻军、待命和采集部队一起参战。',334,384,15,C.muted)
+    text(c,'缺弹或无枪的士兵近战，承受的攻击伤害更大。',334,410,15,C.gold)
     text(c,`${Math.ceil(info.alert.responseSeconds)} 秒后自动结算 · 可在倒计时结束前接管`,312,455,18,C.ink)
     if(!info.ok)text(c,info.message,312,491,16,C.gold)
     this.button('raid-back',312,615,180,42,'返回大地图',()=>{this.modal=null},'light')
@@ -744,7 +787,7 @@ export class Game {
     this.dirty=true
     if(arrived.length){this.persist();this.notify('部队已抵达'+arrived.map(r=>r.target.name).join('、')+'并完成驻防')}
     // 同时只进入一场战斗；其他抵达部队在原地等待，避免覆盖当前战场或编辑窗口。
-    if(this.scene==='world-map'&&!this.modal&&!this.garrisonTransfer){
+    if(this.scene==='world-map'&&!this.modal&&!this.garrisonTransfer&&!this.relocatingBase&&!this.relocatingArmory){
       const waiting=this.save.marchingOrders.find(order=>order.status==='awaiting-battle')
       if(waiting){
         const taken=takeMarchBattle(this.save,waiting.id)
@@ -773,16 +816,18 @@ export class Game {
     }
     for(const task of farmTasks(this.save)){
       if(!task.phase)continue
-      const point=farmTravelPosition(task),groups=task.allocations||task.unitIds.map(unitId=>({unitId,troops:this.save.formations.find(u=>u.id===unitId)?.troops||0}))
+      const point=farmTravelPosition(task)
+      const groups=task.allocations||(task.unitIds?task.unitIds.map(unitId=>({unitId,troops:this.save.formations.find(u=>u.id===unitId)?.troops||0})):[{troops:task.workers}])
       groups.forEach((group,i)=>{
-        const unit=this.save.formations.find(u=>u.id===group.unitId);if(!unit)return
+        const unit=this.save.formations.find(u=>u.id===group.unitId)
+        if(task.unitIds&&!unit)return
         const p=mapToScreen(this.mapCamera,{x:point.x+(i-(groups.length-1)/2)*115,y:point.y})
         c.save();c.translate(p.x,p.y);c.scale(mapMarkerScale(this.mapCamera),mapMarkerScale(this.mapCamera))
-        this.drawTacticalUnit({x:0,y:0,hp:group.troops,maxHp:group.troops,name:unitName(unit)+'分队'},false,false);c.restore()
+        this.drawTacticalUnit({x:0,y:0,hp:group.troops,maxHp:group.troops,name:unit?unitName(unit)+'分队':'未编人员'},false,false);c.restore()
       })
       const p=mapToScreen(this.mapCamera,point)
       c.save();c.translate(p.x,p.y);c.scale(mapMarkerScale(this.mapCamera),mapMarkerScale(this.mapCamera))
-      text(c,task.phase==='returning'?'返回'+villageName(task.villageId)+' · 归入原部队':task.phase==='outbound'?'前往田地代耕':`代耕中 · 剩余${Math.ceil(FARM.duration-task.elapsed)}秒`,0,48,11,C.gold,600,'center');c.restore()
+      text(c,task.phase==='returning'?'返回'+villageName(task.villageId):task.phase==='outbound'?'前往田地代耕':`代耕中 · 剩余${Math.ceil(FARM.duration-task.elapsed)}秒`,0,48,11,C.gold,600,'center');c.restore()
     }
   }
   drawRegion(){
@@ -794,7 +839,7 @@ export class Game {
     text(c,enemy?`守军 ${enemy} 人 · ${regionRecord(s,site.id).enemies.length} 支部队`:`我方驻军 ${units.length} 支 / ${units.reduce((n,u)=>n+u.troops,0)} 人${standby?' · 待命 '+standby+' 支':''}`,385,312,18,C.muted)
     text(c,enemy?'选择部队进攻，击败全部守军后占领该地区。':river?'驻军可捕鱼，鲜鱼自动入库，可送灶房加工。':options.length>1?'可派不同驻军同时采集木头和干草，成果自动入库。':options.length?'驻军可采集矿石，成果自动入库。':'可派空闲编制进驻，占领后部队留在此处防守。',312,358,17,C.ink)
     if(!enemy&&options.length&&(localUnits.length||tasks.length))this.button('region-gather',895,337,230,39,river?(tasks.length?'查看捕鱼':'安排捕鱼'):tasks.length?`查看采集 · ${tasks.length} 项`:'安排采集',()=>{
-      this.gatherMaterial=tasks[0]?.material||options[0].id;this.facilitySelected=[];this.facilityPage=0;this.open('gathering')
+      this.gatherMaterial=tasks[0]?.material||options[0].id;this.setFacilityStaffing();this.open('gathering')
     },'accent')
     const roster=lineagePages(lineageRows(localUnits),3),pages=roster.length;this.regionPage=Math.min(this.regionPage||0,pages-1)
     roster[this.regionPage].forEach(({unit,depth},i)=>{
@@ -820,36 +865,44 @@ export class Game {
   drawGathering(){
     const c=this.ctx,s=this.save,id=this.regionId,tasks=s.gatheringTasks[id]||{},options=gatheringOptions(mapRegion(id)),material=this.gatherMaterial||options[0].id
     const task=tasks[material],name=gatheringName(material),action=gatheringAction(material),fishing=material===FISH.id,stock=gatheringStock(s,material)
+    const deployed=task?.unitIds.length??0,slots=Math.max(0,PROJECT_UNIT_LIMIT-deployed),adding=task&&this.addingFacilityStaff&&slots>0
     options.forEach((option,i)=>this.button('gather-material-'+option.id,312+i*278,257,257,40,tasks[option.id]?`${option.name} · 已派 ${tasks[option.id].workers} 人`:option.name,()=>{
       if(this.gatherMaterial===option.id)return
-      this.gatherMaterial=option.id;this.facilitySelected=[];this.facilityPage=0
+      this.gatherMaterial=option.id;this.setFacilityStaffing()
     },material===option.id?'accent':'light'))
     if(fishing)this.button('gather-kitchen',895,257,230,40,'去灶房加工',()=>this.open('kitchen'),'light')
     text(c,`仓库 ${name} ${number(stock)} 份`,312,325,21,C.olive,700)
     text(c,fishing?'每人每分钟捕 1 份鲜鱼，自动入库。':'每人每分钟采集 1 份，自动入库；可以离开面板。',312,364,16,C.muted)
     if(options.length>1)text(c,'木头、干草可由不同部队同时采集。',1125,364,15,C.muted,400,'right')
-    if(task){
+    if(task&&!adding){
       const status=hungerStatus(s).disabled?`极度饥饿，${fishing?'捕鱼':'采集'}暂停`:stock>=MATERIAL_LIMIT?'仓库已满':`${action}中`
       text(c,`${task.workers} 人 · ${status}`,312,425,21,C.ink,700)
-      box(c,312,459,813,10,C.line,3);box(c,312,459,813*task.elapsed/GATHER_INTERVAL,10,C.olive,3)
-      text(c,`本轮进度 ${Math.floor(task.elapsed)} / ${GATHER_INTERVAL} 秒 · 部队：${this.workNames(task).slice(0,48)}`,312,495,16,C.muted)
+      text(c,`已派 ${deployed} / ${PROJECT_UNIT_LIMIT} 支`,1125,425,16,C.olive,600,'right')
+      box(c,312,455,813,10,C.line,3);box(c,312,455,813*task.elapsed/GATHER_INTERVAL,10,C.olive,3)
+      text(c,`本轮进度 ${Math.floor(task.elapsed)} / ${GATHER_INTERVAL} 秒`,312,484,15,C.muted)
+      if(slots)this.button('gather-add',995,470,130,26,'加派部队',()=>this.setFacilityStaffing(true),'accent')
+      this.drawActiveWorkerList(task,'gather-unit','gatherListPage',uid=>{
+        if(stopGathering(s,id,material,uid)){this.setFacilityStaffing();this.persist();this.notify(`已停止该部队${action}`)}
+      },slots?985:1125)
       this.button('gather-stop',565,615,560,42,`结束${action}`,()=>{
-        if(stopGathering(s,id,material)){this.facilitySelected=[];this.facilityPage=0;this.persist();this.notify(`${action}已结束`)}
+        if(stopGathering(s,id,material)){this.setFacilityStaffing();this.persist();this.notify(`${action}已结束`)}
       },'light')
     }else{
       const available=availableGatheringUnits(s,id)
+      text(c,adding?`已派 ${deployed} 支 · 可再派 ${slots} 支。本轮已开始时，新部队从下轮计入产量。`:`每种材料最多派 ${PROJECT_UNIT_LIMIT} 支部队。`,312,389,14,C.muted)
       if(!available.length)text(c,'本地暂无空闲部队，可返回地区增派部队或结束现有任务。',312,462,17,C.muted)
-      const workers=available.length?this.drawFacilityPicker(available):0
-      this.button('gather-start',565,615,560,42,`派部队${action} · 每分钟 ${workers} 份`,()=>{
+      const workers=available.length?this.drawFacilityPicker(available,slots):0
+      this.button('gather-start',565,615,560,42,adding?`确认加派 · ${workers} 人`:`派部队${action} · 每分钟 ${workers} 份`,()=>{
         const result=startGathering(s,id,[...this.facilitySelected],material)
-        if(!result.ok){this.notify(result.message);return}this.persist();this.notify(`部队开始${action}，成果将自动入库`)
+        if(!result.ok){this.notify(result.message);return}
+        this.setFacilityStaffing();this.persist();this.notify(adding?`已加派 ${workers} 人${action}`:`部队开始${action}，成果将自动入库`)
       },workers?'accent':'light')
     }
-    this.button('gather-back',312,615,230,42,'返回地区',()=>this.openRegion(id),'light')
+    this.button('gather-back',312,615,230,42,adding?'取消加派':'返回地区',()=>adding?this.setFacilityStaffing():this.openRegion(id),'light')
   }
   returnFromFarm(){if(this.farmReturnToMap)this.openWorldMap();else this.open('base')}
   drawWorldMap(){
-    const c=this.ctx,v=MAP_VIEW,s=this.save,picking=this.choosingBase,home=picking?null:mapBase(s)
+    const c=this.ctx,v=MAP_VIEW,s=this.save,picking=this.choosingBase||this.relocatingBase||this.relocatingArmory,home=this.choosingBase?null:mapBase(s)
     this.mapCamera||=picking?fitCamera({}):createCamera(home)
     const selection=mapLocation(this.mapSelected,s)
     const selected=picking?mapVillage(this.mapSelected):[home.villageId,home.roadId].includes(selection.id)?home:selection
@@ -867,14 +920,14 @@ export class Game {
     villageFields(c,fields,new Set(Object.keys(s.fieldFarmTasks)))
     regionRoads(c,[...MAP_TRAILS,...MAP_ROADS,...MAP_REGION_ROADS],mapLocation,view)
     c.restore()
-    if(raids.length)this.drawRaidRoutes(raids)
+    if(!picking&&raids.length)this.drawRaidRoutes(raids)
     for(const field of fields){
       const p=mapToScreen(camera,field),w=field.w*camera.zoom,h=field.h*camera.zoom
       const x=Math.max(v.x,p.x-w/2),y=Math.max(v.y,p.y-h/2),right=Math.min(v.x+v.w,p.x+w/2),end=Math.min(v.y+v.h,p.y+h/2)
       if(right<=x||end<=y)continue
       const task=farmTaskAt(s,field.id),onField=!!task,arrived=onField&&(!task.phase||task.phase==='working')
       const finished=onField&&task.phase==='returning'&&task.elapsed>=FARM.duration,rest=Math.ceil(fieldCooldown(s,field.id)),working=arrived,labelScale=mapMarkerScale(camera)
-      const fieldGarrisoned=villageControlled(s,field.villageId)&&villageUnits(s,field.villageId).length>0
+      const canDispatch=villageControlled(s,field.villageId)&&(s.baseVillageId===field.villageId||villageUnits(s,field.villageId).length>0)
       c.save();c.translate(p.x,p.y);c.scale(labelScale,labelScale)
       box(c,-36,-20,72,40,'#26371ee8',2)
       if(working){
@@ -886,7 +939,7 @@ export class Game {
       }else if(onField){
         text(c,'田地',0,-6,16,C.ink,600,'center')
         text(c,task.phase==='returning'?'队伍返村':'队伍赶来',0,12,11,C.olive,500,'center')
-      }else if(fieldGarrisoned){
+      }else if(canDispatch){
         text(c,'田地',0,-6,16,C.ink,600,'center')
         text(c,'点击派兵',0,12,11,C.olive,500,'center')
       }else{
@@ -895,14 +948,16 @@ export class Game {
       c.restore()
       if(!picking)this.buttons.push({id:'map-field-'+field.id,x,y,w:right-x,h:end-y,fn:()=>this.openMapField(field.id)})
     }
-    const base=picking?null:baseForces(s)
+    const base=home?baseForces(s):null
     for(const location of sites){
       const isBase=location.id===home?.roadId,site=isBase?home:location
       const position=mapToScreen(camera,site),p={x:0,y:0},markerScale=mapMarkerScale(camera)
       const garrison=isBase?base.units:site.strategic?regionUnits(s,site.id):villageUnits(s,site.id),stationLines=isBase?mapBaseLines(base):mapGarrisonLines(garrison,s)
       const owner=isBase?'player':regionOwner(s,site.id),style=MAP_TERRAIN_STYLES[site.type],isCity=site.type==='city',isVillageSite=site.type==='village'
-      const siteVillageId=site.villageId??site.id,hasFacility=!isBase&&owner!=='enemy'&&(s.facilityVillages.armory===siteVillageId||s.facilityVillages.medical===siteVillageId),flagBottom=isBase?-43:isCity?-30:-24,flagHeight=hasFacility?74:44
-      const canChoose=picking&&isVillageSite&&owner!=='enemy'
+      const siteVillageId=site.villageId??site.id
+      const hasFacility=(isBase||isVillageSite)&&owner!=='enemy'&&s.facilityVillages.armory===siteVillageId
+      const flagBottom=isBase?-43:isCity?-30:-24,flagHeight=hasFacility?74:44
+      const canChoose=this.relocatingArmory?(isBase||isVillageSite)&&!armoryTransferError(s,siteVillageId):picking&&isVillageSite&&(this.relocatingBase?!baseRelocationError(s,siteVillageId):owner!=='enemy')
       const left=66,rightEdge=66,top=isBase?58:isCity?55:hasFacility?54:owner!=='neutral'?52:33,bottom=75+stationLines.length*14,color=isBase?C.red:style.color
       const visualTop=Math.max(top,owner!=='neutral'?-flagBottom+flagHeight+4:0)
       if(position.x<-rightEdge*markerScale||position.x>1440+left*markerScale||position.y<v.y-bottom*markerScale||position.y>v.y+v.h+visualTop*markerScale)continue
@@ -925,7 +980,8 @@ export class Game {
       const status=isBase?`根据地中心 · 兵力 ${base.troops.toLocaleString()}人`:canChoose?`${populationRule(siteVillageId).name} · 可选`:isVillageSite?(owner==='player'?`${populationRule(siteVillageId).name} · ${villagePopulation(s,siteVillageId)}人`:owner==='enemy'?`${villagePop} · 敌${regionEnemyTroops(s,site.id)}人`:`${villagePop} · 无驻军`):`${REGION_KINDS[site.type]} · ${owner==='enemy'?guard+'敌军 '+regionEnemyTroops(s,site.id)+'人':owner==='player'?'我方驻防':'无驻军'}`
       text(c,status,p.x,p.y+64+stationLines.length*14,11,canChoose?C.olive:color,500,'center')
       if(hasFacility){
-        box(c,p.x-27,p.y-50,54,19,C.panel,2,C.gold);text(c,this.save.facilityVillages.armory===siteVillageId?'兵工厂':'医疗部',p.x,p.y-40,10,C.gold,600,'center')
+        const y=isBase?p.y-63:p.y-50
+        box(c,p.x-27,y,54,19,C.panel,2,C.gold);text(c,'兵工厂',p.x,y+10,10,C.gold,600,'center')
       }
       c.restore()
       const x=Math.max(v.x,position.x-left*markerScale),y=Math.max(v.y,position.y-top*markerScale),right=Math.min(v.x+v.w,position.x+rightEdge*markerScale),end=Math.min(v.y+v.h,position.y+bottom*markerScale)
@@ -942,13 +998,14 @@ export class Game {
       }})
     }
     this.drawMapMarches()
-    if(raids.length)this.drawRaidMarkers(raids)
+    if(!picking&&raids.length)this.drawRaidMarkers(raids)
     c.restore()
-    if(picking){this.drawStartingBaseSelection(selected);return}
+    if(this.relocatingArmory){this.drawArmoryTransfer(selected);return}
+    if(picking){this.drawBaseSelection(selected);return}
     this.drawRaidAlerts()
     box(c,0,0,1440,106,C.panel);line(c,0,105,1440,105,C.line)
     box(c,26,22,58,58,C.raised,2,C.line);icon(c,'army',55,50,34,C.olive)
-    text(c,s.name,100,38,23,C.ink,700);text(c,rank(s)+' · 兵力 '+s.troops.toLocaleString(),100,70,16,C.muted,500)
+    text(c,s.name,100,38,23,C.ink,700);text(c,'总指挥 · 兵力 '+s.troops.toLocaleString(),100,70,16,C.muted,500)
     this.buttons.push({id:'profile',x:20,y:16,w:330,h:73,fn:()=>this.open('army')})
     const transfer=this.garrisonTransfer
     text(c,transfer?'转移驻地':home.name+'战区',400,40,28,C.ink,800)
@@ -965,7 +1022,7 @@ export class Game {
     circle(c,43,712,4,isBase?C.gold:C.olive)
     text(c,selected.name,60,712,22,C.ink,700)
     text(c,isBase?`根据地中心 · 兵力 ${base.troops.toLocaleString()} 人`:selected.strategic?`${selected.direction} · ${REGION_KINDS[selected.type]}`:selected.direction+' · 村庄',235,712,14,isBase?C.gold:C.olive,600)
-    text(c,transfer?`从 ${mapLocation(transfer.originId).name} 出发 · 请选择可进驻的地点`:selectedEnemy?'敌军占领 · 点击查看守军及进攻入口。':selected.strategic?'点击查看守军，选择部队占领或进攻。':isBase?`未派出兵力留守：${base.units.length} 支编制 · 未编 ${base.unassigned.toLocaleString()} 人`:'周边田地可派兵帮助乡亲耕种。',40,736,13,C.muted)
+    text(c,transfer?`从 ${mapLocation(transfer.originId).name} 出发 · 抵达敌占据点后自动交战`:selectedEnemy?'敌军占领 · 点击查看守军及进攻入口。':selected.strategic?'点击查看守军，选择部队占领或进攻。':isBase?`未派出兵力留守：${base.units.length} 支编制 · 未编 ${base.unassigned.toLocaleString()} 人`:'周边田地可派兵帮助乡亲耕种。',40,736,13,C.muted)
     this.button('map-location-action',455,704,180,40,transfer?'取消转移':selectedEnemy||selected.strategic?'查看地区':isBase?'进入根据地':'村庄管理',()=>{
       if(transfer)this.cancelGarrisonTransfer()
       else if(isBase)this.open('base')
@@ -984,16 +1041,46 @@ export class Game {
     this.button('map-fit',850,704,80,40,'全图',()=>fitCamera(camera),'light')
     if(selected)this.button('map-focus',946,704,80,40,'定位',()=>focusCamera(camera,selected),'light')
   }
-  drawStartingBaseSelection(selected){
-    const c=this.ctx
+  drawBaseSelection(selected){
+    const c=this.ctx,relocating=this.relocatingBase
     box(c,0,0,1440,106,C.panel);line(c,0,105,1440,105,C.line)
-    text(c,'选择根据地中心',44,40,32,C.ink,800)
-    text(c,'拖动或缩放地图，点击任意无敌军的村庄来选址。',44,77,16,C.muted)
+    text(c,relocating?'迁移根据地中心':'选择根据地中心',44,40,32,C.ink,800)
+    text(c,relocating?`当前根据地 ${mapBase(this.save).name} · 点击地图上的安全村庄选择新址。`:'拖动或缩放地图，点击任意无敌军的村庄来选址。',44,77,16,C.muted)
+    if(relocating)this.button('map-base-cancel',1190,26,200,46,'取消迁移',()=>{this.openWorldMap();this.mapSelected='base';this.open('base')},'light')
     box(c,0,692,1440,118,C.panel);line(c,0,692,1440,692,C.line)
     text(c,selected?selected.name:'请选择一个村庄',44,724,24,C.ink,700)
     if(selected){
       text(c,`${populationRule(selected.id).name} · 村民 ${number(villagePopulation(this.save,selected.id))} 人`,44,762,16,C.muted)
-      this.button('map-base-confirm',1090,706,300,45,'确认根据地 · 开始游戏',()=>this.confirmStartingBase(),'accent')
+      const error=relocating?baseRelocationError(this.save,selected.id):''
+      if(error)text(c,error,1090,729,16,C.gold)
+      else this.button('map-base-confirm',1090,706,300,45,relocating?'确认迁移根据地':'确认根据地 · 开始游戏',()=>relocating?this.confirmBaseRelocation():this.confirmStartingBase(),'accent')
+    }
+    this.drawMapZoom(selected)
+  }
+  openArmoryTransfer(target=null){
+    this.armoryTransferFrom=this.villageId
+    this.openWorldMap();this.relocatingArmory=true;this.mapSelected=target
+  }
+  drawArmoryTransfer(selected){
+    const c=this.ctx,s=this.save,origin=s.facilityVillages.armory
+    box(c,0,0,1440,106,C.panel);line(c,0,105,1440,105,C.line)
+    text(c,'转移兵工厂',44,40,32,C.ink,800)
+    text(c,`当前位于${villageName(origin)} · 在地图上选择我方村庄`,44,77,16,C.muted)
+    this.button('armory-transfer-cancel',1190,26,200,46,'取消转移',()=>{
+      this.openWorldMap();this.openVillage(this.armoryTransferFrom)
+    },'light')
+    box(c,0,692,1440,118,C.panel);line(c,0,692,1440,692,C.line)
+    text(c,selected?selected.name:'请选择目的村庄',44,724,24,C.ink,700)
+    text(c,'迁移后，正在兵工厂工作的部队将随兵工厂一起迁往新址继续生产。',44,762,16,C.muted)
+    if(selected){
+      const error=armoryTransferError(s,selected.id)
+      if(error)text(c,error,1090,729,16,C.gold)
+      else this.button('armory-transfer-confirm',1090,706,300,45,'确认转移兵工厂',()=>{
+        const result=transferArmory(s,selected.id)
+        if(!result.ok){this.notify(result.message);return}
+        this.openWorldMap();focusCamera(this.mapCamera,selected);this.openVillage(selected.id)
+        this.persist();this.notify('兵工厂已迁至'+selected.name)
+      },'accent')
     }
     this.drawMapZoom(selected)
   }
@@ -1175,13 +1262,17 @@ export class Game {
     const c=this.ctx,b=this.battle,parents=new Map(this.save.formations.map(unit=>[unit.id,unit.splitParent]))
     const roster=lineagePages(lineageRows(b.units.map(actor=>({id:actor.id,splitParent:actor.parentActorId??parents.get(actor.id),actor})))),pages=roster.length
     this.battleRosterPage=Math.min(this.battleRosterPage||0,pages-1)
-    text(c,hungerStatus(this.save).disabled?'极度饥饿：火力50% · 射速降低 · 移动速度70%':'点选部队 → 点击地面移动 · 各部队进入射程自动开火',42,689,16,hungerStatus(this.save).disabled?C.red:C.muted)
+    const ammo=WEAPONS.map(weapon=>weapon.name+' '+number(this.save[weapon.ammo]||0)).join(' · ')
+    text(c,hungerStatus(this.save).disabled?'极度饥饿：火力50% · 射速降低 · 移动速度70%':'剩余弹药 · '+ammo,42,689,16,hungerStatus(this.save).disabled?C.red:C.muted)
     this.button('battle-split',972,674,205,27,'分遣下级部队',()=>this.openBattleSplit(),'light')
     this.button('battle-recall',1190,674,205,27,'召回选中分遣部队',()=>{if(!b.recallUnit())this.notify('请先选中一支分遣部队');else this.notify('分遣部队正在返回，接触原部队后自动归队')},'light')
     roster[this.battleRosterPage].forEach(({unit:{actor:unit},depth},i)=>{
       const x=42+i*187,y=715,selected=b.selectedUnitId===unit.id,color=unit.hp<=0?C.muted:selected?C.olive:C.blue
       box(c,x,y,175,72,selected?'#31432d':C.raised,2,color)
-      text(c,depth?'↳ '+unit.name:unit.name,x+14,y+21,depth?17:21,color,700);text(c,unit.hp>0?`${Math.ceil(unit.hp)} / ${unit.maxHp} 人`:`阵亡 · 损失 ${unit.maxHp} 人`,x+14,y+51,15,unit.hp>0?C.muted:C.red)
+      text(c,depth?'↳ '+unit.name:unit.name,x+14,y+18,depth?17:21,color,700)
+      const melee=unit.hp>0?b.meleeTroops(unit):0,meleeOnly=melee===unit.groups.reduce((n,group)=>n+group.troops,0)
+      text(c,unit.hp>0?`${Math.ceil(unit.hp)} / ${unit.maxHp} 人`:`阵亡 · 损失 ${unit.maxHp} 人`,x+14,y+41,15,unit.hp>0?C.muted:C.red)
+      if(melee)text(c,meleeOnly?'近战':'部分近战',x+14,y+60,13,C.gold,600)
       this.buttons.push({id:'battle-unit-'+unit.id,x,y,w:175,h:72,fn:()=>{if(!b.selectUnit(unit.id))this.notify('该部队已阵亡，请选择其他部队')}})
     })
     if(pages>1){
@@ -1242,7 +1333,7 @@ export class Game {
       for(let i=0;i<number;i++){const x=b.x+(i%3-1)*24,y=b.y+(Math.floor(i/3)-1)*25;circle(c,x,y+5,11,'#a2ac90');circle(c,x,y,10,'#547348');circle(c,x,y-4,8,'#7f995a');line(c,x+3,y,x+21,y-1,'#354a38',4)}
       if(b.weapon.id==='mortar'||b.groups?.some(g=>g.weapon.id==='mortar'))weaponArt(c,'mortar',b.x+38,b.y+22,.65,weaponById('mortar').color)
     }
-    for(const s of b.shots)line(c,s.x,s.y,s.tx,s.ty,s.hostile?'#b57859':weaponById(s.kind).color,s.kind==='sniper'?3:2)
+    for(const s of b.shots)line(c,s.x,s.y,s.tx,s.ty,s.hostile?'#b57859':s.kind==='melee'?C.gold:weaponById(s.kind).color,s.kind==='sniper'?3:2)
     if(this.save.settings.effects)for(const f of b.bursts){c.save();c.globalAlpha=f.life/.4;circle(c,f.x,f.y,(1-f.life/.4)*(f.radius||25)+6,'#e7c989');c.restore()}
     box(c,0,0,1440,116,C.paper);line(c,0,115,1440,115,C.line);text(c,b.regionName?b.regionName+(b.raidId?' · 驻地防守':' · 争夺战'):MODES.find(m=>m.id===b.mode)?.name||'战斗演练',42,37,25,'#f5f3e4',700);text(c,b.raidId?'驻军应敌':`第 ${b.level} 战区  /  波次 ${b.wave}${Number.isFinite(b.goal)?' / '+b.goal:''}`,42,80,16,'#bdc7b5')
     text(c,`部队兵力  ${Math.ceil(b.hp)} / ${b.maxHp}`,460,38,20,'#f3f2dd',600);box(c,460,70,360,9,'#51604d',4);box(c,460,70,360*b.hp/b.maxHp,9,'#b5c68a',4)
@@ -1302,23 +1393,23 @@ export class Game {
     const villages=controlledVillages(s),units=villages.flatMap(v=>villageUnits(s,v.id)),troops=units.reduce((sum,u)=>sum+u.troops,0)
     text(c,'名下 '+villages.length+' 个村庄 · 驻军 '+units.length+' 支 / '+troops.toLocaleString()+' 人',720,512,18,C.olive,600,'center')
     text(c,'未派出的编制与未编人员留守于此；村庄驻防与耕田请前往大地图。',720,553,15,C.muted,400,'center')
-    this.button('base-home',312,615,230,42,'返回指挥部',()=>this.home(),'light')
-    if(s.baseVillageId!=null)this.button('base-village',564,615,230,42,'本村管理',()=>this.openVillage(home.villageId),'light')
-    this.button('base-map',817,615,308,42,'在地图上定位根据地',()=>{this.openWorldMap();this.mapSelected='base';focusCamera(this.mapCamera,home)},'accent')
+    this.button('base-home',312,615,192,42,'返回指挥部',()=>this.home(),'light')
+    if(s.baseVillageId!=null)this.button('base-village',519,615,192,42,'本村管理',()=>this.openVillage(home.villageId),'light')
+    this.button('base-map',726,615,192,42,'定位根据地',()=>{this.openWorldMap();this.mapSelected='base';focusCamera(this.mapCamera,home)},'light')
+    if(s.baseVillageId!=null)this.button('base-relocate',933,615,192,42,'迁移根据地',()=>this.openBaseRelocation(),'accent')
   }
-  manageVillageFacility(kind){
-    const result=placeVillageFacility(this.save,kind,this.villageId)
+  manageVillageArmory(){
+    const result=placeVillageFacility(this.save,'armory',this.villageId)
     if(!result.ok){this.notify(result.message);return}
-    this.persist();this.localVillage=this.villageId;this.open(kind==='armory'?'base-armory':'base-medical')
+    this.persist();this.localVillage=this.villageId;this.open('base-armory')
   }
-  confirmFacilityRemoval(kind){
-    const id=this.villageId,name=kind==='armory'?'兵工厂':'医疗部'
-    const content=kind==='armory'?'会结束所有生产项目，保留已入库的成品和仓库材料。':'会结束制绷带和治疗安排，保留伤员、已完成的治疗轮次和物资。'
-    wx.showModal({title:'拆除本村'+name,content,confirmText:'拆除',success:response=>{
+  confirmArmoryRemoval(){
+    const id=this.villageId
+    wx.showModal({title:'拆除本村兵工厂',content:'会结束所有生产项目，保留已入库的成品和仓库材料。',confirmText:'拆除',success:response=>{
       if(!response.confirm)return
-      const result=removeVillageFacility(this.save,kind,id)
+      const result=removeVillageFacility(this.save,'armory',id)
       if(!result.ok){this.notify(result.message);return}
-      this.persist();this.notify(name+'已拆除')
+      this.persist();this.notify('兵工厂已拆除')
     }})
   }
   drawVillage(){
@@ -1357,18 +1448,15 @@ export class Game {
     })
     if(!units.length)text(c,'暂无驻军，点击“调入驻军”选择空闲的独立部队。',312,435,18,C.muted)
     if(pages>1){this.button('village-prev',312,540,100,30,'上一页',()=>{this.villagePage=Math.max(0,this.villagePage-1)},'light');this.button('village-next',428,540,100,30,'下一页',()=>{this.villagePage=Math.min(pages-1,this.villagePage+1)},'light');text(c,(this.villagePage+1)+' / '+pages,553,555,14,C.muted)}
-    else text(c,'驻军不限支数；可派部分分队耕田、生产或医疗，剩余人员留守。',312,553,15,C.muted)
-    const installed=s.facilityVillages.armory===id?'armory':s.facilityVillages.medical===id?'medical':null
-    if(installed){
-      const name=installed==='armory'?'兵工厂':'医疗部'
-      this.button('village-'+installed,312,582,393,36,'进入本村'+name,()=>this.manageVillageFacility(installed),'dark')
-      this.button('village-remove-'+installed,732,582,393,36,'拆除本村'+name,()=>this.confirmFacilityRemoval(installed),'light')
-    }else{
-      this.button('village-armory',312,582,393,36,'将兵工厂设在本村',()=>this.manageVillageFacility('armory'),'dark')
-      this.button('village-medical',732,582,393,36,'将医疗部设在本村',()=>this.manageVillageFacility('medical'),'dark')
-    }
+    const armory=s.facilityVillages.armory
+    if(armory===id){
+      this.button('village-armory',312,582,255,36,'进入本村兵工厂',()=>this.manageVillageArmory(),'dark')
+      this.button('village-transfer-armory',591,582,255,36,'转移兵工厂',()=>this.openArmoryTransfer(),'accent')
+      this.button('village-remove-armory',870,582,255,36,'拆除兵工厂',()=>this.confirmArmoryRemoval(),'light')
+    }else if(armory===null)this.button('village-armory',312,582,393,36,'将兵工厂设在本村',()=>this.manageVillageArmory(),'dark')
+    else if(!armoryTransferError(s,id))this.button('village-transfer-armory',312,582,393,36,'将兵工厂迁入本村',()=>this.openArmoryTransfer(id),'dark')
     this.button('village-back',312,632,230,30,'返回大地图',()=>this.openWorldMap(),'light')
-    text(c,'兵工厂与医疗部不能设在同一个村庄；迁移前须停止设施工作。',568,647,13,C.muted)
+    if(s.baseVillageId!=null&&s.baseVillageId!==id)this.button('village-relocate-base',886,632,239,30,'设为根据地中心',()=>this.openBaseRelocation(id),'accent')
   }
   openGarrisonSplit(unitId,source='village'){
     const unit=this.save.formations.find(u=>u.id===unitId),types=garrisonSplitTypes(this.save,unit)
@@ -1404,17 +1492,15 @@ export class Game {
       const result=splitGarrisonUnit(s,unit.id,kind.id,this.garrisonSplitTroops)
       if(!result.ok){this.notify(result.message);return}
       const source=this.garrisonSplitSource||'village'
-      let needsArms=false
       if(source==='campaign-deploy'){
-        const region=mapRegion(this.deploymentRegionId),requiresArms=!region||regionEnemyTroops(s,region.id)>0
-        needsArms=requiresArms&&!hasFullArms(result.unit)
-        if(!needsArms)this.deploymentIds=[...(this.deploymentIds||[]),result.unit.id]
-        this.revealDispatchedUnit('deployment',dispatchRows(s,requiresArms),result.unit.id)
+        const region=mapRegion(this.deploymentRegionId),combat=!region||regionEnemyTroops(s,region.id)>0
+        this.deploymentIds=[...(this.deploymentIds||[]).filter(id=>id!==unit.id),result.unit.id]
+        this.revealDispatchedUnit('deployment',dispatchRows(s,combat,!!region&&combat),result.unit.id)
       }else if(source==='village-station'){
         this.stationSelected=[...(this.stationSelected||[]),result.unit.id]
         this.revealDispatchedUnit('station',dispatchRows(s,false),result.unit.id)
       }
-      this.persist();this.modal=source;this.notify(`已分出 ${unitName(result.unit)}（${result.unit.troops}人）${needsArms?'，补齐武器后可出战':'，现已待命'}`)
+      this.persist();this.modal=source;this.notify(`已分出 ${unitName(result.unit)}（${result.unit.troops}人），现已待命`)
     },'accent')
   }
   revealDispatchedUnit(prefix,rows,id){
@@ -1445,7 +1531,10 @@ export class Game {
       this.persist();this.openWorldMap();this.notify(result.message)
     },ids.length?'accent':'light')
   }
-  drawFacilityPicker(stationed=null){
+  setFacilityStaffing(adding=false){
+    this.addingFacilityStaff=adding;this.facilitySelected=[];this.facilityPage=0;this.dirty=true
+  }
+  drawFacilityPicker(stationed=null,limit=Infinity){
     const c=this.ctx,s=this.save,roots=stationed||(this.localVillage?villageLocalUnits(s,this.localVillage):formationRoots(s))
     const roster=lineagePages(lineageRows(roots),3),pages=roster.length
     this.facilityPage=Math.min(this.facilityPage||0,pages-1)
@@ -1458,7 +1547,10 @@ export class Game {
       text(c,busy?activityLabel(busy):'可派驻',1108,y+19,14,busy?C.gold:C.olive,500,'right')
       this.buttons.push({id:'facility-unit-'+unit.id,x,y,w:1125-x,h:37,fn:()=>{
         if(busy){this.notify('该部队正在执行任务，请先召回归队');return}
-        this.facilitySelected=selected?chosen.filter(id=>id!==unit.id):[...chosen,unit.id]
+        const current=this.facilitySelected||[]
+        if(current.includes(unit.id))this.facilitySelected=current.filter(id=>id!==unit.id)
+        else if(current.length<limit)this.facilitySelected=[...current,unit.id]
+        else this.notify(`本次最多可选 ${limit} 支部队`)
       }})
     })
     if(!roots.length)text(c,this.localVillage?'本村暂无驻军，请先返回村庄调入部队。':'暂无独立编制，请先到我的部队组建。',312,462,19,C.muted)
@@ -1467,28 +1559,32 @@ export class Game {
       this.button('facility-next',428,554,100,29,'下一页',()=>{this.facilityPage=Math.min(pages-1,this.facilityPage+1)},'light')
     }
     const workers=roots.filter(unit=>chosen.includes(unit.id)).reduce((sum,unit)=>sum+unit.troops,0)
-    text(c,'已选 '+chosen.length+' 支 / '+workers+' 人 · 派驻期间不可出战、耕作或训练',pages>1?552:312,576,14,C.muted)
+    text(c,'已选 '+chosen.length+(Number.isFinite(limit)?' / '+limit:'')+' 支 · '+workers+' 人',pages>1?552:312,576,14,C.muted)
     return workers
   }
   openWorkDispatch(kind,id){
     if(!isVillage(id))return
-    this.workKind=kind;this.workVillage=id;this.workPage=0;this.workPlan=[];this.workReturn=kind==='farm'?'farm':kind==='armory'?'base-armory':'base-medical';this.modal='work-dispatch';this.dirty=true
+    this.workKind=kind;this.workVillage=id;this.workPage=0;this.workPlan=[];this.workReturn=kind==='farm'?'farm':'base-armory';this.modal='work-dispatch';this.dirty=true
   }
   returnWorkDispatch(){this.modal=this.workReturn;this.dirty=true}
   drawWorkDispatch(){
     const c=this.ctx,s=this.save,units=villageLocalUnits(s,this.workVillage)
+    const armoryTask=this.workKind==='armory'?s.armoryTasks[this.factoryProduct||'rifle']:null
     const roster=lineagePages(lineageRows(units)),pages=roster.length
     this.workPage=Math.min(this.workPage||0,pages-1)
     text(c,'从'+villageName(this.workVillage)+(this.workKind==='farm'?'本地部队':'驻军')+'中选择',312,277,22,C.ink,700)
     text(c,'派出编制和人数另行设置，原部队留村，人员不会复制。',312,309,16,C.muted)
     roster[this.workPage].forEach(({unit,depth},i)=>{
       const x=rosterRowX(depth),y=335+i*50,free=availableWorkforce(s,unit.id),planned=this.workPlan.find(a=>a.unitId===unit.id)
+      const alreadyAssigned=armoryTask?.unitIds.includes(unit.id)
       box(c,x,y,1125-x,42,C.raised,2,C.line);text(c,unitName(unit),x+15,y+21,depth?17:20,C.ink,700)
       text(c,'可派 '+free+' 人'+(planned?' · 已选 '+planned.troops+' 人':' / 共 '+unit.troops+' 人'),580,y+21,16,C.olive)
-      this.button('work-root-'+unit.id,979,y+5,132,30,planned?'调整派遣':free?'选择原部队':'暂无余员',()=>{
+      this.button('work-root-'+unit.id,979,y+5,132,30,alreadyAssigned?'已在本产线':planned?'调整派遣':free?'选择原部队':'暂无余员',()=>{
+        if(alreadyAssigned){this.notify('这支部队已在本产线工作');return}
+        if(this.workKind==='armory'&&!planned&&this.workPlan.length+(armoryTask?.unitIds.length??0)>=PROJECT_UNIT_LIMIT){this.notify(`每条产线最多派 ${PROJECT_UNIT_LIMIT} 支部队`);return}
         if(!free){this.notify('该部队人员已派完或正在训练');return}
         this.workUnitId=unit.id;this.workType=planned?.type||'group';this.workCount=planned?.troops||(free<=12?Math.max(1,Math.ceil(free/2)):7);this.modal='work-config'
-      },free?'accent':'light')
+      },free&&!alreadyAssigned?'accent':'light')
     })
     if(!units.length)text(c,'本村暂无驻军，请先返回村庄调入部队。',312,420,20,C.muted)
     if(pages>1){this.button('work-prev',312,550,100,30,'上一页',()=>{this.workPage=Math.max(0,this.workPage-1)},'light');this.button('work-next',428,550,100,30,'下一页',()=>{this.workPage=Math.min(pages-1,this.workPage+1)},'light')}
@@ -1536,104 +1632,107 @@ export class Game {
   submitWork(allocations){
     const ids=allocations.map(a=>a.unitId),s=this.save;let result
     if(this.workKind==='farm'){const field=mapField(this.farmFieldId);result=startFarming(s,'help',0,field?.crop||'millet',ids,field?.id||null,allocations)}
-    else if(this.workKind==='armory')result=startProduction(s,ids,this.factoryProduct||'rifle',this.workVillage,allocations)
-    else if(this.workKind==='bandages')result=startBandageProduction(s,ids,this.workVillage,allocations)
-    else result=startTreatment(s,this.workKind,ids,this.workVillage,allocations)
+    else result=startProduction(s,ids,this.factoryProduct||'rifle',this.workVillage,allocations)
     if(!result.ok){this.notify(result.message);return}
+    if(this.workKind==='armory')this.setFacilityStaffing()
     this.persist();this.returnWorkDispatch();this.notify('已派出 '+allocations.length+' 支分队 / '+allocations.reduce((n,a)=>n+a.troops,0)+' 人，余员继续留守')
   }
   workNames(task){return task.allocations?task.allocations.map(a=>unitName(this.save.formations.find(u=>u.id===a.unitId))+'派出'+(DUTY_TYPES.find(t=>t.id===a.type)?.name||'分队')+' '+a.troops+'人').join('、'):task.unitIds.map(id=>unitName(this.save.formations.find(u=>u.id===id))).join('、')}
-  drawFacilityTask(kind,task,product=null){
+  drawActiveWorkerList(task,prefix,pageKey,onStop,pageRight=1125){
+    const c=this.ctx,s=this.save,ids=task.unitIds||[],pages=Math.max(1,Math.ceil(ids.length/3))
+    this[pageKey]=Math.min(this[pageKey]||0,pages-1)
+    if(pages>1){
+      text(c,`${this[pageKey]+1}/${pages}`,pageRight-46,483,12,C.muted,500,'center')
+      this.button(prefix+'-prev',pageRight-92,470,26,24,'‹',()=>{this[pageKey]=Math.max(0,this[pageKey]-1)},'light')
+      this.button(prefix+'-next',pageRight-26,470,26,24,'›',()=>{this[pageKey]=Math.min(pages-1,this[pageKey]+1)},'light')
+    }
+    ids.slice(this[pageKey]*3,this[pageKey]*3+3).forEach((uid,i)=>{
+      const unit=s.formations.find(u=>u.id===uid);if(!unit)return
+      const y=502+i*31,workers=taskWorkersFrom(task,uid,unit)
+      box(c,312,y,813,27,C.raised,2,C.line)
+      text(c,unitName(unit),326,y+14,15,C.ink,600)
+      text(c,`${workers} 人`,540,y+14,14,C.olive,600)
+      this.button(`${prefix}-stop-${uid}`,1015,y+2,102,23,'停止工作',()=>onStop(uid),'light')
+    })
+  }
+  drawFacilityTask(kind,task,product,slots=0){
     const c=this.ctx,s=this.save,running=facilityRunning(s,kind)&&!hungerStatus(s).disabled
-    const names=this.workNames(task)
-    const waiting=product?(Object.entries(product.recipe).some(([id,cost])=>s.materials[id]<cost)?'材料不足，等待补充':'仓库空间不足，等待出库'):'暂无伤员，留守待命'
+    const waiting=Object.entries(product.recipe).some(([id,cost])=>s.materials[id]<cost)?'材料不足，等待补充':'仓库空间不足，等待出库'
     text(c,'派驻 '+task.workers+' 人 · '+(hungerStatus(s).disabled?'极度饥饿，工作暂停':running?'工作进行中':waiting),312,425,21,running?C.olive:C.gold,700)
-    box(c,312,459,813,10,C.line,3);box(c,312,459,813*task.elapsed/facilityInterval(kind),10,C.olive,3)
-    text(c,'本轮进度 '+Math.floor(task.elapsed)+' / '+facilityInterval(kind)+' 秒',312,495,16,C.muted)
-    if(!product)text(c,'本批治疗 '+(task.batch?.reduce((sum,n)=>sum+n,0)||0)+' 人',1125,495,16,C.olive,600,'right')
-    text(c,'派驻：'+names.slice(0,48),312,529,16,C.muted)
-    this.button('facility-recall',312,554,300,34,product?`结束${product.name}生产`:'结束工作 · 保留已完成成果',()=>{
-      if(recallFacility(s,kind)){this.facilitySelected=[];this.facilityPage=0;this.persist();this.notify(product?`已结束${product.name}生产`:'已结束工作，保留已完成成果')}
+    box(c,312,455,813,10,C.line,3);box(c,312,455,813*task.elapsed/FACILITY_INTERVAL,10,C.olive,3)
+    text(c,'本轮进度 '+Math.floor(task.elapsed)+' / '+FACILITY_INTERVAL+' 秒',312,484,15,C.muted)
+    this.drawActiveWorkerList(task,'facility-unit','facilityTaskPage',uid=>{
+      if(recallFacility(s,kind,uid)){this.facilitySelected=[];this.facilityPage=0;this.persist();this.notify(`已停止该部队生产${product.name}`)}
+    })
+    this.button('facility-recall',565,615,slots?315:560,42,`结束${product.name}生产`,()=>{
+      if(recallFacility(s,kind)){this.facilitySelected=[];this.facilityPage=0;this.persist();this.notify(`已结束${product.name}生产`)}
     },'light')
   }
   drawArmory(){
     const c=this.ctx,s=this.save,id=this.factoryProduct||'rifle',product=PRODUCTS.find(p=>p.id===id),task=s.armoryTasks[id]
+    const deployed=task?.unitIds.length??0,slots=Math.max(0,PROJECT_UNIT_LIMIT-deployed),adding=task&&this.addingFacilityStaff&&slots>0
+    const gap=13,width=(813-(PRODUCTS.length-1)*gap)/PRODUCTS.length
     PRODUCTS.forEach((p,i)=>{
-      const x=312+i*165
-      this.button('factory-product-'+p.id,x,257,153,40,p.name,()=>{
+      const x=312+i*(width+gap)
+      this.button('factory-product-'+p.id,x,257,width,40,p.name,()=>{
         if(p.id===id)return
-        this.factoryProduct=p.id;this.facilitySelected=[];this.facilityPage=0
+        this.factoryProduct=p.id;this.setFacilityStaffing()
       },p.id===id?'accent':'light')
-      if(s.armoryTasks[p.id])circle(c,x+142,268,4,C.olive)
+      if(s.armoryTasks[p.id])circle(c,x+width-10,264,4,C.olive)
     })
-    const unit=product.unit,batch=product.batchSize||1,minutes=facilityInterval(id)/60
+    const unit=product.unit,batch=product.batchSize||1,minutes=FACILITY_INTERVAL/60
     const rate=product.batchesPerCycle?`每条产线最多产 ${product.batchesPerCycle*batch} ${unit}`:`每 ${product.workers} 人产 ${batch} ${unit}`
     text(c,`每 ${minutes} 分钟 · ${rate}`,312,324,17,C.ink,600)
-    if(Object.keys(s.armoryTasks).length)text(c,'● 已派工',1125,324,14,C.olive,600,'right')
+    text(c,deployed>PROJECT_UNIT_LIMIT?`已派 ${deployed} 支`:`已派 ${deployed} / ${PROJECT_UNIT_LIMIT} 支`,1125,324,15,C.olive,600,'right')
     text(c,`${product.name}库存 ${number(productionInventory(s,product))} · ${batch===1?'单件':`每 ${batch} ${unit}`}消耗 ${recipeLabel(product)} · 仓库矿石 ${number(s.materials.ore)} / 木头 ${number(s.materials.wood)}`,312,355,16,C.muted)
-    if(task){
-      text(c,`按当前库存预计本轮可产 ${productionCapacity(s,product,task.workers)} ${unit}，各项目共用材料`,312,387,16,C.gold)
-      this.drawFacilityTask(id,task,product)
+    if(task&&!adding){
+      text(c,`按当前库存预计本轮可产 ${productionCapacity(s,product,task.cycleWorkers??task.workers)} ${unit}，各项目共用材料`,312,387,16,C.gold)
+      this.drawFacilityTask(id,task,product,slots)
+      if(slots)this.button('facility-add',895,615,230,42,'加派部队',()=>this.setFacilityStaffing(true),'accent')
     }else{
-      text(c,'可派不同部队并行生产，各项目单独计时。',312,386,15,C.muted)
+      text(c,adding?`可再派 ${slots} 支。本轮已开始时，新部队从下轮计入产量。`:'每种产品可派最多 5 支部队，各项目单独计时。',312,386,15,C.muted)
       if(this.localVillage)this.button('facility-detach',900,367,225,30,'派遣部分驻军',()=>this.openWorkDispatch('armory',this.localVillage),'accent')
-      const workers=this.drawFacilityPicker()
-      this.button('facility-start',565,615,560,42,`派驻生产 · 本轮可产 ${productionCapacity(s,product,workers)} ${unit}`,()=>{
+      const workers=this.drawFacilityPicker(null,slots)
+      this.button('facility-start',565,615,560,42,adding?`确认加派 · ${workers} 人`:`派驻生产 · 本轮可产 ${productionCapacity(s,product,workers)} ${unit}`,()=>{
         const result=startProduction(s,[...this.facilitySelected],id,this.localVillage||null)
-        if(!result.ok){this.notify(result.message);return}this.persist();this.notify(`部队已驻厂，有材料时每 ${minutes} 分钟结算生产`)
+        if(!result.ok){this.notify(result.message);return}
+        this.setFacilityStaffing();this.persist();this.notify(adding?`已加派 ${workers} 人生产${product.name}`:`部队已驻厂，有材料时每 ${minutes} 分钟结算生产`)
       },'accent')
     }
-    this.button('base-return',312,615,230,42,this.localVillage?'返回村庄':'返回大地图',()=>this.returnToVillage(),'light')
+    this.button('base-return',312,615,230,42,adding?'取消加派':this.localVillage?'返回村庄':'返回大地图',()=>adding?this.setFacilityStaffing():this.returnToVillage(),'light')
   }
-  drawMedical(){
-    const c=this.ctx,s=this.save,ward=this.medicalWard||'light',spec=WARDS[ward],task=s.medicalTasks[ward]
-    const tabs=[['light',`${WARDS.light.name} · ${s.wounded.light} 人`],['heavy',`${WARDS.heavy.name} · ${s.wounded.heavy} 人`],['bandages','制作绷带']]
-    tabs.forEach(([key,label],i)=>this.button('medical-ward-'+key,312+i*278,257,257,40,label,()=>{this.medicalWard=key;this.facilitySelected=[];this.facilityPage=0},key===ward?'accent':'light'))
-    if(ward==='bandages'){this.drawBandageProduction();return}
-    text(c,ward==='heavy'?'每人需5名工作人员 · 每批最多2人 · 每轮2分钟 · 每人需3轮':'每人需2名工作人员 · 每批最多10人 · 每轮30秒 · 每人需1轮',312,324,17,C.ink,600)
-    text(c,'每次治疗死亡概率 '+Math.round(spec.deathChance*100)+'% · 康复回到未编人员 · 累计康复 '+s.recoveredTroops+' / 死亡 '+s.medicalDeaths,312,354,15,C.muted)
-    if(ward==='heavy')text(c,'未治疗 '+s.heavyTreatmentStages[0]+' 人 · 已治1轮 '+s.heavyTreatmentStages[1]+' 人 · 已治2轮 '+s.heavyTreatmentStages[2]+' 人',312,385,15,C.gold)
-    else text(c,'战损中一半阵亡、一半入院；伤员均分为轻伤和重伤。',312,385,15,C.muted)
-    if(task)this.drawFacilityTask(ward,task)
-    else{
-      if(this.localVillage)this.button('facility-detach',900,367,225,30,'派遣部分驻军',()=>this.openWorkDispatch(ward,this.localVillage),'accent')
-      const workers=this.drawFacilityPicker(),capacity=Math.min(spec.capacity,Math.floor(workers/spec.workers))
-      this.button('facility-start',565,615,560,42,'派驻'+spec.name+' · 每轮可治疗 '+capacity+' 人',()=>{
-        const result=startTreatment(s,ward,[...this.facilitySelected],this.localVillage||null)
-        if(!result.ok){this.notify(result.message);return}this.persist();this.notify('医疗部已派驻，无伤员时留守待命')
-      },'accent')
-    }
-    this.button('base-return',312,615,230,42,this.localVillage?'返回村庄':'返回大地图',()=>this.returnToVillage(),'light')
+  dispatchFarm(field,workers,unitIds=null){
+    const result=startFarming(this.save,'help',workers,field.crop,unitIds,field.id)
+    if(!result.ok){this.notify(result.message);return}
+    this.persist();this.notify('部队已出发，抵达田地后开始耕作')
   }
-  drawBandageProduction(){
-    const c=this.ctx,s=this.save,task=s.bandageTask
-    text(c,`每人每 ${BANDAGE_INTERVAL} 秒制作 1 卷绷带，每卷消耗 ${recipeLabel(BANDAGE_PRODUCT)}。`,312,324,17,C.ink,600)
-    text(c,`仓库干草 ${number(s.materials.grass)} 份 · 绷带 ${number(s.bandages)} 卷 · 到树林可采集干草`,312,355,16,C.muted)
-    if(task){
-      text(c,`按现有材料本轮可制作 ${productionCapacity(s,BANDAGE_PRODUCT,task.workers)} 卷`,312,387,16,C.gold)
-      this.drawFacilityTask('bandages',task,BANDAGE_PRODUCT)
-    }else{
-      if(this.localVillage)this.button('facility-detach',900,367,225,30,'派遣部分驻军',()=>this.openWorkDispatch('bandages',this.localVillage),'accent')
-      const workers=this.drawFacilityPicker()
-      this.button('facility-start',565,615,560,42,`派驻制作绷带 · 本轮可制作 ${productionCapacity(s,BANDAGE_PRODUCT,workers)} 卷`,()=>{
-        const result=startBandageProduction(s,[...this.facilitySelected],this.localVillage||null)
-        if(!result.ok){this.notify(result.message);return}this.persist();this.notify('已派驻制作绷带，产出自动入库')
-      },'accent')
-    }
-    this.button('base-return',312,615,230,42,this.localVillage?'返回村庄':'返回大地图',()=>this.returnToVillage(),'light')
+  inputFarmReserve(field){
+    const available=farmReserveAvailable(this.save)
+    if(!available){this.notify('根据地暂无可派的未编人员');return}
+    wx.showModal({title:'派未编人员代耕',editable:true,content:String(Math.min(30,available)),
+      numberInput:true,minValue:1,maxValue:available,inputLabel:'派遣人数',numberLabel:'派遣人数',confirmText:'派出代耕',
+      success:result=>{if(result.confirm)this.dispatchFarm(field,Number(result.content))}
+    })
   }
   drawFarm(){
     const c=this.ctx,s=this.save,task=farmTaskAt(s,this.farmFieldId),kind=task?.type||'help'
     const field=mapField(task?.fieldId||this.farmFieldId)
-    const units=field?villageLocalUnits(s,field.villageId):[],selected=units.filter(unit=>this.farmSelected.includes(unit.id))
+    const homeField=field?.villageId===s.baseVillageId,units=field?farmLocalUnits(s,field.villageId):[]
+    const selected=units.filter(unit=>this.farmSelected.includes(unit.id))
     const count=selected.reduce((sum,unit)=>sum+unit.troops,0)
     const population=field&&populationRule(field.villageId),recruits=population?population.min+'—'+population.max:5
     box(c,312,257,813,42,C.raised,2,C.line)
     text(c,field?field.name+' · 帮乡亲耕种':task?.type==='self'?'原有耕作任务 · 完成后归队':'帮助乡亲耕田',330,278,21,C.olive,700)
     text(c,kind==='help'?'完工得粮：出工人数 × 30%，向下取整；随机发谷子、大米、苞谷。':'原有自耕任务完成后归队。',312,325,15,C.muted)
-    if(!task&&field)this.button('farm-detach',800,308,325,34,'★ 只派几个人（选本村部队）',()=>this.openWorkDispatch('farm',field.villageId),'accent')
+    if(!task&&field){
+      if(!homeField||villageLocalUnits(s,field.villageId).length)this.button('farm-detach',800,308,325,34,'★ 只派几个人（选本村部队）',()=>this.openWorkDispatch('farm',field.villageId),'accent')
+      if(homeField){
+        const available=farmReserveAvailable(s)
+        this.button('farm-source-reserve',800,346,325,34,'派未编人员 · 可派 '+available+' 人',()=>this.inputFarmReserve(field),available?'accent':'light')
+      }
+    }
     text(c,'每轮 '+FARM.duration+' 秒 · '+hungerStatus(s).label,312,351,15,C.olive,600)
-    if(!task&&field)text(c,`可派${villageName(field.villageId)}驻军及留村待命的分队。`,312,380,16,C.ink)
+    if(!task&&field)text(c,homeField?'可派留守部队或未编人员代耕。':`可派${villageName(field.villageId)}驻军及留村待命的分队。`,312,380,16,C.ink)
     if(task){
       const travelling=task.phase&&task.phase!=='working',returning=task.phase==='returning'
       const remaining=travelling?Math.ceil((farmRouteLength(task)-task.travelled)/(FARM_TRAVEL_SPEED*hungerStatus(s).speedMultiplier)):Math.ceil(FARM.duration-task.elapsed)
@@ -1642,9 +1741,9 @@ export class Game {
       box(c,312,452,813,10,C.line,4);box(c,312,452,813*progress,10,C.olive,4)
       const names=task.unitIds?this.workNames(task):'未编人员'
       text(c,'派出：'+names.slice(0,45)+' · 剩余 '+remaining+' 秒',312,490,17,C.muted)
-      text(c,returning?'抵达'+villageName(task.villageId)+'后归入原上级部队，返程中仍占用派出人数':task.type==='help'?'完工：得粮 '+number(helpHarvestYield(task.workers))+' 份 · 减耗 '+task.workers+' 批 · 报名 '+recruits+' 人':'预计收获 '+CROPS.find(crop=>crop.id===task.crop).name+' '+task.workers*FARM.grainPerWorker+' 份',312,523,17,C.gold,600)
+      text(c,returning?'抵达'+villageName(task.villageId)+'后'+(task.unitIds?'归入原部队':'恢复为可用的未编人员')+'，返程中仍占用派出人数':task.type==='help'?'完工：得粮 '+number(helpHarvestYield(task.workers))+' 份 · 减耗 '+task.workers+' 批 · 报名 '+recruits+' 人':'预计收获 '+CROPS.find(crop=>crop.id===task.crop).name+' '+task.workers*FARM.grainPerWorker+' 份',312,523,17,C.gold,600)
       this.button('farm-cancel',312,554,310,36,returning?'正在返回本村':'召回归队 · 本轮不发奖励',()=>{
-        if(cancelFarming(s,this.farmFieldId)){this.persist();this.notify(farmTaskAt(s,this.farmFieldId)?.phase?'分队开始返回本村，抵达后归入原部队':'已召回归队，可以执行其他任务')}
+        if(cancelFarming(s,this.farmFieldId)){this.persist();this.notify(farmTaskAt(s,this.farmFieldId)?.phase?'代耕人员开始返村':'已召回归队，可以执行其他任务')}
       },'light')
     }else if(field){
         const roster=lineagePages(lineageRows(units),3),pages=roster.length;this.farmPage=Math.min(this.farmPage||0,pages-1)
@@ -1659,15 +1758,11 @@ export class Game {
             this.farmSelected=chosen?this.farmSelected.filter(id=>id!==unit.id):[...this.farmSelected,unit.id]
           }})
         })
-        if(!units.length)text(c,'本村暂无驻军，请先派部队到本村驻扎。',312,454,17,C.muted)
+        if(!units.length)text(c,homeField?'暂无可选的留守编制。':'本村暂无驻军，请先派部队到本村驻扎。',312,454,17,C.muted)
         if(pages>1){this.button('farm-prev',312,522,100,25,'上一页',()=>{this.farmPage=Math.max(0,this.farmPage-1)},'light');this.button('farm-next',428,522,100,25,'下一页',()=>{this.farmPage=Math.min(pages-1,this.farmPage+1)},'light')}
         text(c,'已选 '+selected.length+' 支 / '+count+' 人 · 部队同一时间只能执行一项任务',pages>1?550:312,537,14,C.muted)
       text(c,'预计得粮 '+number(helpHarvestYield(count))+' 份 · 减耗 '+count+' 批 · 完工报名 '+recruits+' 人',312,573,16,C.gold)
-      this.button('farm-start',565,615,560,42,'派出代耕 · '+count+' 人',()=>{
-        const result=startFarming(s,'help',count,field.crop,[...this.farmSelected],field.id)
-        if(!result.ok){this.notify(result.message);return}
-        this.persist();this.notify('耕作已开始，完成或召回归队后可执行其他任务')
-      },count?'accent':'light')
+      if(!homeField||units.length)this.button('farm-start',565,615,560,42,'派出代耕 · '+count+' 人',()=>this.dispatchFarm(field,count,[...this.farmSelected]),count?'accent':'light')
     }else{
       text(c,'请在大地图选择本村田地，再安排驻军代耕。',720,455,20,C.muted,500,'center')
     }
@@ -1702,7 +1797,7 @@ export class Game {
     this.button('formation-merge',513,610,185,40,'组建上级',()=>this.openFormationMerge(),'light')
     this.button('formation-food',723,610,185,40,'去灶房做饭',()=>this.open('kitchen'),'light')
     this.button('formation-shop',940,610,185,40,'补充武器',()=>this.open('shop'),'light')
-    text(c,`编制可暂不配枪 · 武器总数 ${number(f.totalWeapons)} 把 · 出战前需配齐武器`,312,662,14,C.muted)
+    text(c,`武器总数 ${number(f.totalWeapons)} 把 · 缺弹或无枪的士兵使用近战`,312,662,14,C.muted)
   }
   openFormationList(type){
     if(type!==this.formationListType){this.formationListScroll=0;this.formationListCollapsed=new Set()}
@@ -1974,7 +2069,7 @@ export class Game {
       this.buttons.push({id:'formation-weapon-plus-'+w.id,x:x+112,y:y+51,w:30,h:30,fn:()=>{draft.weapons[w.id]=Math.min(stock,count+1);draft.weaponAuto=false;this.formationError=''}})
     })
     const validation=existing?validateReinforcement(this.save,draft.id,draft.reinforcements,draft.weapons,draft.baseTroops,true):validateFormation(this.save,draft.type,draft.troops,draft.id,draft.weapons),warning=this.formationError||(!validation.ok?validation.message:'')
-    text(c,warning||(existing?'数量为最终总配发，可用数含原配；卸下武器回到可分配库存。':'可以不配武器先建立编制，出战前再补齐；每人最多一把。'),312,603,15,warning?C.red:C.muted)
+    text(c,warning||(existing?'数量为最终总配发，可用数含原配。卸下武器回到可分配库存。':'每人最多配备一把武器。无枪士兵出战时使用近战。'),312,603,15,warning?C.red:C.muted)
     this.button('formation-cancel',312,621,185,37,'取消',()=>this.returnFormationEditor(),'light')
     this.button('formation-save',940,621,185,37,draft.id===null?'创建编制':draft.reinforcements?'确认补员':'保存修改',()=>{
       const result=existing?reinforceFormation(this.save,draft.id,draft.reinforcements,draft.weapons,draft.baseTroops,true):setFormation(this.save,draft.type,draft.troops,draft.id,draft.weapons)
@@ -2030,7 +2125,7 @@ export class Game {
       text(c,type==='shop'?`持有 ${s[item.id]} · 待售 ${shopAvailable(s,item.id)} ${item.unit}`:`持有 ${s[item.id]} ${item.unit}`,x+16,y+78,14,C.olive,600)
       if(type==='shop'){const q=purchaseQuote(s,item);this.button('buy-'+item.id,x+218,y+58,161,34,q.amount?`${q.cost}金币/${q.amount}${item.unit}`:'已售罄',()=>this.buyShopItem(item),q.amount?'accent':'light')}
     })
-    const hint=category==='ammo'?'弹药与手雷作为库存储备，当前自动射击不消耗弹药。':'医疗包和绷带作为物资储备；伤员统一在根据地医疗部治疗。'
+    const hint=category==='ammo'?'步枪、手枪、轻机枪、狙击枪共用子弹，迫击炮使用炮弹。':'医疗包和绷带作为物资储备。'
     text(c,hint,312,655,15,C.muted)
   }
   drawModal(){
@@ -2038,9 +2133,9 @@ export class Game {
     const detail=s.formations.find(u=>u.id===this.formationDetailId)
     const region=mapRegion(this.regionId)
     const names={raid:'驻地警报',region:region?.name+' · 地区情报',gathering:region?.name+(region?.type==='river'?' · 捕鱼':' · 材料采集'),'garrison-transfer':'确认转移驻地','garrison-split':'从驻军分出部队','work-dispatch':'选择原驻村部队','work-config':'设置派遣编制',village:villageName(this.villageId)+' · 村庄管理','village-station':villageName(this.villageId)+' · 调入驻军',campaign:'主线战役','campaign-deploy':'选择派遣部队','battle-split':'战场分遣',recruitment:'发动群众',kitchen:'灶房',base:'根据地',farm:'耕地',
-      'base-armory':'兵工厂','base-medical':'医疗部',training:'训练场','training-result':'训练完成',formation:'我的部队','formation-list':'分类部队','formation-merge':'组建上级 · 三合一','formation-detail':detail?unitName(detail)+' · 部队详情':'部队详情','formation-edit':this.formationDraft?.id==null?'添加编制':'修改编制',warehouse:'物资仓库',shop:'商城',army:'指挥官信息',tasks:'作战任务',settings:'指挥设置',pause:'战斗暂停',result:this.battle?.won?'行动成功':'战斗结束',retreat:'结束本次行动？'}
+      'base-armory':'兵工厂',training:'训练场','training-result':'训练完成',formation:'我的部队','formation-list':'分类部队','formation-merge':'组建上级 · 三合一','formation-detail':detail?unitName(detail)+' · 部队详情':'部队详情','formation-edit':this.formationDraft?.id==null?'添加编制':'修改编制',warehouse:'物资仓库',shop:'商城',army:'总指挥',tasks:'作战任务',settings:'指挥设置',pause:'战斗暂停',result:this.battle?.won?'行动成功':'战斗结束',retreat:'结束本次行动？'}
     box(c,270,130,900,550,C.panel,2,C.line);box(c,270,130,6,550,C.olive,0);brackets(c,270,130,900,550,C.olive)
-    const heading=type==='result'&&this.battle?.raidId?'驻地防守结果':type==='recruitment'?'发动群众 · 全部村庄':this.localVillage&&['training','base-armory','base-medical'].includes(type)?villageName(this.localVillage)+' · '+names[type]:names[type]
+    const heading=type==='result'&&this.battle?.raidId?'驻地防守结果':type==='recruitment'?'发动群众 · 全部村庄':this.localVillage&&['training','base-armory'].includes(type)?villageName(this.localVillage)+' · '+names[type]:names[type]
     const dispatchSite=type==='campaign-deploy'&&mapRegion(this.deploymentRegionId)
     const dispatchHint=dispatchSite?`${REGION_KINDS[dispatchSite.type]} · ${regionRecord(s,dispatchSite.id).enemies.length?regionRecord(s,dispatchSite.id).enemies.slice(0,3).map(u=>`${u.name} ${u.troops.toLocaleString()}人`).join(' / '):'无敌军，可直接派驻占领'}`:null
     text(c,heading,312,179,30,C.ink,800);text(c,dispatchHint||(type==='shop'?this.shopRestockLabel():type==='farm'?'军民同心 · 完工后按出工人数分粮':type==='recruitment'?'军民同心 · 暂停乡亲物资补给':'FRONTLINE / COMMAND CENTER'),312,216,11,type==='shop'?C.gold:C.muted,500);line(c,312,242,1125,242,C.line)
@@ -2056,7 +2151,7 @@ export class Game {
       else if(type==='village')this.openWorldMap()
       else if(type==='village-station'){if(this.villageStationFromMap)this.openWorldMap();else this.openVillage(this.villageId)}
       else if(type==='garrison-split')this.modal=this.garrisonSplitSource||'village'
-      else if(['base-armory','base-medical','training','recruitment'].includes(type))this.returnToVillage()
+      else if(['base-armory','training','recruitment'].includes(type))this.returnToVillage()
       else this.modal=null
     },'light')
     if(type==='raid'){this.drawRaidDetail()
@@ -2086,8 +2181,6 @@ export class Game {
     }else if(type==='farm'){this.drawFarm()
     }else if(type==='base-armory'){
       this.drawArmory()
-    }else if(type==='base-medical'){
-      this.drawMedical()
     }else if(type==='training'){
       this.drawTrainingSelection()
     }else if(type==='recruitment'){
@@ -2104,19 +2197,20 @@ export class Game {
       if(this.inventoryTab==='weapons'){this.drawWeapons(type);return}
       this.drawGoods(type)
     }else if(type==='army'){
-      const rp=rankProgress(s)
-      icon(c,'army',397,356,108,C.olive);text(c,s.name,510,296,30,C.ink,700);text(c,`现任职务  ${rp.name}`,510,351,22,C.olive,600);text(c,`部队兵力  ${s.troops}    /    累计胜利  ${s.wins}`,510,398,19,C.muted)
-      text(c,`军功 ${s.xp}`,397,445,22,C.gold,700,'center')
-      text(c,rp.next?`还需 ${rp.nextMerit-s.xp} 军功晋升 ${rp.next}`:'已至最高职务：军长',510,445,16,C.muted);box(c,510,478,560,9,C.line,4);box(c,510,478,560*rp.ratio,9,C.olive,4)
-      this.button('rename',312,568,240,60,'修改指挥官名称',()=>this.rename(),'light')
+      icon(c,'army',397,372,108,C.olive)
+      text(c,s.name,510,346,30,C.ink,700)
+      text(c,`部队兵力 ${number(s.troops)}    /    累计胜利 ${number(s.wins)}`,510,398,19,C.muted)
+      this.button('rename',510,450,190,48,'修改名称',()=>this.rename(),'light')
     }else if(type==='tasks'){
       MISSIONS.forEach((m,i)=>{const y=270+i*112,done=s.claimed.includes(m.id),progress=missionProgress(s,m),ready=progress>=m.goal;icon(c,'tasks',345,y+40,30,C.olive);text(c,m.name,380,y+18,21,C.ink,700)
         const legacy=m.id==='hold'&&s.bestWave>=5&&s.recruitedTroops<m.goal
         text(c,legacy?'旧版坚守目标已完成，原奖励仍可领取':`${m.desc}  ${Math.min(progress,m.goal)} / ${m.goal}`,380,y+52,16,C.muted);text(c,`奖励 ${m.reward} 金币`,760,y+35,16,C.gold,600)
         this.button('claim-'+m.id,940,y+10,185,58,done?'已领取':ready?'领取奖励':'进行中',()=>{if(claim(s,m.id)){this.persist();this.notify(`获得 ${m.reward} 金币`)}else this.notify(done?'奖励已领取':'继续完成作战目标')},ready&&!done?'accent':'light');line(c,312,y+90,1125,y+90,C.line)})
     }else if(type==='settings'){
-      ;[['effects','战斗特效','关闭爆炸粒子，减少画面开销'],['vibration','触感反馈','操作时的触感反馈'],['music','背景音乐','主界面播放军事进行曲，可随时关闭']].forEach(([key,label,sub],i)=>{const y=290+i*100;text(c,label,312,y,23,C.ink,700);text(c,sub,312,y+37,16,C.muted);this.button('toggle-'+key,935,y-15,190,62,s.settings[key]?'已开启':'已关闭',()=>{s.settings[key]=!s.settings[key];if(key==='music')setMusicEnabled(s.settings.music);this.persist()},s.settings[key]?'accent':'light')})
-      text(c,'进度自动保存在当前设备。战斗进行中退出不会保存战场。',312,575,16,C.muted);text(c,'指挥前线  /  原型版本 0.1.0',312,625,13,C.muted)
+      ;[['effects','战斗特效','关闭爆炸粒子，减少画面开销'],['vibration','触感反馈','操作时的触感反馈'],['music','背景音乐','主界面播放军事进行曲，可随时关闭']].forEach(([key,label,sub],i)=>{const y=285+i*82;text(c,label,312,y,22,C.ink,700);text(c,sub,312,y+34,15,C.muted);this.button('toggle-'+key,935,y-14,190,56,s.settings[key]?'已开启':'已关闭',()=>{s.settings[key]=!s.settings[key];if(key==='music')setMusicEnabled(s.settings.music);this.persist()},s.settings[key]?'accent':'light')})
+      text(c,'暂停游戏',312,531,22,C.ink,700);text(c,'停止推进一切时间，并锁定所有操作直到点击继续游戏',312,565,15,C.muted)
+      this.button('settings-pause',935,517,190,56,'暂停游戏',()=>this.togglePause(),'gold')
+      text(c,'进度自动保存在当前设备。战斗进行中退出不会保存战场。',312,612,15,C.muted);text(c,'指挥前线  /  原型版本 0.1.0',312,644,13,C.muted)
     }else if(type==='pause'){
       text(c,'部队正在等待你的下一道命令。',720,338,25,C.ink,600,'center');text(c,'离开战场会按当前战果结算。',720,393,17,C.muted,400,'center')
       this.button('resume',486,465,468,65,'继续战斗',()=>{this.modal=null},'accent');this.button('leave',486,548,468,60,'结束行动并结算',()=>this.open('retreat'),'light')
@@ -2127,8 +2221,8 @@ export class Game {
       const r=this.result,b=this.battle;icon(c,b.won?'flag':'shield',720,302,55,b.won?C.olive:C.gold)
       const outcome=b.raidId?`${b.regionName} · ${b.won?'已击退敌袭':r.raid?.occupied?'失守，敌军已占领':'未能击退敌袭，已结算战损'}`:b.regionId&&b.won?`${b.regionName}已占领，幸存部队留驻。`:b.won?'阵地已控制，行动目标达成。':'本次行动已结束，请整备后再战。'
       text(c,outcome,720,362,26,C.ink,700,'center');text(c,`歼敌 ${r.kills}${b.units?' 人':''}${b.raidId?`    ·    我方出战 ${number(b.maxHp)} 人`:`    ·    第 ${r.wave} 波`}    ·    ${Math.floor(b.time)} 秒`,720,410,18,C.muted,400,'center')
-      text(c,`+ ${r.coins} 金币       + ${r.xp} 军功`,720,469,28,C.gold,700,'center')
-      if(b.units)text(c,b.annihilated?`出战部队全军覆灭 · 阵亡 ${r.directDeaths||0} 人 · 无人员撤回`:`战损 ${r.lostTroops} 人 · 阵亡 ${r.directDeaths||0} 人 · 轻伤 ${r.woundedLight||0} 人 · 重伤 ${r.woundedHeavy||0} 人`,720,515,15,r.lostTroops?C.red:C.muted,600,'center')
+      text(c,`+ ${r.coins} 金币`,720,469,28,C.gold,700,'center')
+      if(b.units)text(c,`我方伤亡 ${number(r.lostTroops)} 人`,720,515,17,r.lostTroops?C.red:C.muted,600,'center')
       if(b.mode==='campaign'){
         const captured=WEAPONS.filter(weapon=>r.capturedWeapons?.[weapon.id]>0).map(weapon=>`${weapon.name} ×${r.capturedWeapons[weapon.id]}`).join(' · ')
         text(c,captured?'缴获入库：'+captured:'本次无缴获武器',720,544,15,captured?C.olive:C.muted,600,'center')

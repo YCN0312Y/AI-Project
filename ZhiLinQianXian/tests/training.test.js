@@ -4,7 +4,7 @@ import { freshSave,normalizeSave,setFormation,removeFormation,mergeFormations,un
 import { trainingStatus,createTraining,advanceTraining,completeTraining,trainedCombatGroups,trainingDuration,startTrainingTask,cancelTrainingTask } from '../js/training.js'
 import {advanceEconomy} from '../js/economy.js'
 import {formationActivity,startFarming} from '../js/base.js'
-import {startProduction,startTreatment} from '../js/facilities.js'
+import {startProduction} from '../js/facilities.js'
 import {campaignDeployment} from '../js/campaign.js'
 import { Game } from '../js/game.js'
 import { Battle } from '../js/battle.js'
@@ -23,13 +23,13 @@ test('只有独立编制可参训，达到规定时长才结算，每轮只发�
   assert.equal(completeTraining(s,session),null);assert.equal(s.formations[0].trainingXp,300)
 })
 
-test('两轮训练达到合格等级，不消耗物资、不增加金币军功和兵力，存档可以恢复',()=>{
+test('两轮训练达到合格等级，物资、金币和兵力不变，存档可以恢复',()=>{
   const s=freshSave();assert(setFormation(s,'squad',10).ok)
-  const before={coins:s.coins,xp:s.xp,troops:s.troops,medkits:s.medkits,shells:s.shells,wins:s.wins,kills:s.kills,rifleAmmo:s.rifleAmmo,weapons:JSON.stringify(s.weaponCounts)}
+  const before={coins:s.coins,troops:s.troops,medkits:s.medkits,shells:s.shells,wins:s.wins,kills:s.kills,bullets:s.bullets,weapons:JSON.stringify(s.weaponCounts)}
   train(s,1);train(s,1)
   assert.equal(trainingStatus(s,1).name,'合格');assert.equal(trainingStatus(s,1).bonus,.03)
   assert.equal(s.trainingSessions,2)
-  assert.deepEqual({coins:s.coins,xp:s.xp,troops:s.troops,medkits:s.medkits,shells:s.shells,wins:s.wins,kills:s.kills,rifleAmmo:s.rifleAmmo,weapons:JSON.stringify(s.weaponCounts)},before)
+  assert.deepEqual({coins:s.coins,troops:s.troops,medkits:s.medkits,shells:s.shells,wins:s.wins,kills:s.kills,bullets:s.bullets,weapons:JSON.stringify(s.weaponCounts)},before)
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
 })
 
@@ -118,7 +118,7 @@ test('训练进度保存后恢复，合编下属保持占用，完成才发经�
   assert.equal(formationActivity(loaded,1),'training');assert.equal(formationActivity(loaded,root.id),'training')
   assert.equal(campaignDeployment(loaded,[root.id]).ok,false)
   assert.equal(startFarming(loaded,'self',0,'rice',[root.id]).ok,false)
-  assert.equal(startProduction(loaded,[root.id],'rifle').ok,false);assert.equal(startTreatment(loaded,'light',[root.id]).ok,false)
+  assert.equal(startProduction(loaded,[root.id],'rifle').ok,false)
   assert.equal(setFormation(loaded,'squad',11,1).ok,false);assert.equal(unmergeFormation(loaded,root.id).ok,false)
   assert.equal(startTrainingTask(loaded,4).ok,false)
   advanceEconomy(loaded,20.9);assert.equal(trainingStatus(loaded,root.id).xp,0)

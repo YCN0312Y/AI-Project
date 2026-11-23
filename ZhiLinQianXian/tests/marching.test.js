@@ -66,11 +66,10 @@ test('驻军可从村庄直达其他据点再转驻其他村庄，刷新继续�
   assert.equal(loaded.troops,before.troops);assert.deepEqual(loaded.weaponCounts,before.weaponCounts);assert.deepEqual(loaded.formations,before.formations)
 })
 
-test('转驻拒绝正在工作的驻军、原地、敌占据点和过期来源，失败时保留原驻防',()=>{
-  const s=setup(),mountain=MAP_REGIONS.find(site=>site.type==='mountain'&&!site.enemyTroops),enemy=MAP_REGIONS.find(site=>site.enemyTroops)
+test('转驻拒绝正在工作的驻军、原地和过期来源，失败时保留原驻防',()=>{
+  const s=setup(),mountain=MAP_REGIONS.find(site=>site.type==='mountain'&&!site.enemyTroops)
   assert(occupyRegion(s,mountain.id,[1]).ok)
   const before=structuredClone(s)
-  assert.match(startGarrisonTransfer(s,1,mountain.id,enemy.id).message,/敌军占领/)
   assert.match(startGarrisonTransfer(s,1,mountain.id,mountain.id).message,/另一处/)
   assert.match(startGarrisonTransfer(s,1,1,2).message,/原驻地/)
   assert.deepEqual(s,before)
@@ -90,10 +89,19 @@ test('空地允许无枪行军，同目标多次到达会增援，合编下属�
 
 test('敌占目标到达前不进战场，抵达后自动进入原RTS且不提前改变归属',()=>{
   const g=game(),target=MAP_REGIONS.find(v=>v.enemyTroops)
-  g.dispatchRegion(target.id,[1]);assert.equal(g.scene,'world-map');assert.equal(g.battle,undefined);assert.equal(regionOwner(g.save,target.id),'enemy')
+  assert(stationTroops(g.save,1,[1]).ok)
+  g.openGarrisonTransfer(1,1);g.selectGarrisonTransferTarget(target.id)
+  assert.equal(g.modal,'garrison-transfer');assert.deepEqual(g.save.garrisons[1],[1])
+  g.drawGarrisonTransfer();g.buttons.find(button=>button.id==='transfer-confirm').fn()
+  assert.equal(g.scene,'world-map');assert.equal(g.battle,undefined);assert.equal(regionOwner(g.save,target.id),'enemy')
+  assert.equal(g.save.garrisons[1],undefined)
+  assert.deepEqual(marchPosition(g.save.marchingOrders[0]),{x:MAP_SITES[0].x,y:MAP_SITES[0].y})
+  g.save=normalizeSave(g.save)
   g.updateMapMarches(.5);assert.equal(g.battle,undefined)
   g.updateMapMarches(10000);assert.equal(g.scene,'battle');assert.equal(g.battle.regionId,target.id);assert.equal(g.save.marchingOrders.length,0)
   assert.equal(formationActivity(g.save,1),'battle')
+  g.battle.done=true;g.battle.won=true;g.finish()
+  assert.deepEqual(regionUnits(g.save,target.id).map(unit=>unit.id),[1])
 })
 
 test('抵达时有其他战斗或编辑窗口则等待，不覆盖当前战场，关闭窗口后接战',()=>{

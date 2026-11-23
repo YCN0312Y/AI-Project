@@ -3,6 +3,7 @@ import {detachGarrison,formationRoots,recallToStandby,syncIdleBranches} from './
 import {formationActivity} from './base.js'
 import {campaignDeployment} from './campaign.js'
 import {weaponById} from './weapons.js'
+import {RECRUITMENT} from './logistics.js'
 import {villageUnits,villageLocalUnits,recallGarrison,evacuateVillage} from './villages.js'
 
 function initialEnemies(site){
@@ -28,7 +29,7 @@ export function normalizeRegions(s,raw){
   for(const site of OCCUPIABLE_SITES){
     const old=raw?.mapRegions?.[site.id],record=s.mapRegions[site.id]
     if(!old||typeof old!=='object')continue
-    if(Array.isArray(old.enemies))record.enemies=old.enemies.slice(0,12).filter(u=>u&&Number.isSafeInteger(u.troops)&&u.troops>0&&u.troops<=80000&&(site.type==='city'?['regiment','brigade','division','army']:['squad','platoon','company','battalion','regiment','brigade','division','army']).includes(u.type)&&weaponById(u.weapon).id===u.weapon).map((u,i)=>({name:typeof u.name==='string'?Array.from(u.name).slice(0,16).join(''):`敌${i+1}部队`,type:u.type,weapon:u.weapon,troops:u.troops}))
+    if(Array.isArray(old.enemies))record.enemies=old.enemies.slice(0,12).filter(u=>u&&Number.isSafeInteger(u.troops)&&u.troops>0&&u.troops<=RECRUITMENT.troopLimit&&(site.type==='city'?['regiment','brigade','division','army']:['squad','platoon','company','battalion','regiment','brigade','division','army']).includes(u.type)&&weaponById(u.weapon).id===u.weapon).map((u,i)=>({name:typeof u.name==='string'?Array.from(u.name).slice(0,16).join(''):`敌${i+1}部队`,type:u.type,weapon:u.weapon,troops:u.troops}))
     if(record.enemies.length){
       if(site.villageId&&s.garrisons[site.villageId]?.length)evacuateVillage(s,site.villageId)
       continue
@@ -43,13 +44,13 @@ export function normalizeRegions(s,raw){
     }
   }
 }
-export function regionDispatch(s,id,ids){
+export function regionDispatch(s,id,ids,fromGarrison=false){
   if(!mapRegion(id))return {ok:false,message:'请选择有效的地图地区'}
   if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)return {ok:false,message:'请至少选择一支不同的独立部队'}
   const roots=formationRoots(s)
-  if(ids.some(id=>!roots.some(u=>u.id===id)||formationActivity(s,id)))return {ok:false,message:'所选部队不空闲，请先结束任务或撤回驻军'}
+  if(ids.some(id=>!roots.some(u=>u.id===id)||formationActivity(s,id,fromGarrison)))return {ok:false,message:'所选部队无法出发，请检查当前任务和驻防状态'}
   const units=roots.filter(u=>ids.includes(u.id))
-  if(regionEnemyTroops(s,id)>0)return campaignDeployment(s,ids)
+  if(regionEnemyTroops(s,id)>0)return campaignDeployment(s,ids,fromGarrison)
   return {ok:true,units,troops:units.reduce((sum,u)=>sum+u.troops,0)}
 }
 export function occupyRegion(s,id,ids){

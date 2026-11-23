@@ -64,10 +64,14 @@ export function startMarch(s,kind,targetId,unitIds){
   const target=kind==='region'?mapRegion(targetId):kind==='village'?ALL_VILLAGES.find(v=>v.id===targetId):null
   if(!target)return {ok:false,message:'请选择有效的行军目标'}
   const regionId=kind==='region'?targetId:target.regionId??target.id
-  const check=regionDispatch(s,regionId,unitIds);if(!check.ok)return check
+  const attacking=kind==='region'&&regionEnemyTroops(s,regionId)>0
+  const check=regionDispatch(s,regionId,unitIds,attacking);if(!check.ok)return check
   // 不同出发地的部队分别成队，各走各的路。
   const groups=new Map();for(const id of unitIds){const key=marchOrigin(s,id);groups.set(key,[...(groups.get(key)||[]),id])}
   const orders=[...groups].map(([origin,ids])=>queueMarch(s,kind,target,ids,origin))
+  if(attacking){
+    for(const [origin,ids] of groups)if(origin!=='base')for(const id of ids)detachGarrison(s,origin,id)
+  }
   const names=[...groups.keys()].map(origin=>mapLocation(origin,s).name).join('、')
   return {ok:true,order:orders[0],orders,message:`部队已从${names}出发，正在前往${target.name}`}
 }
@@ -78,11 +82,9 @@ export function startGarrisonTransfer(s,unitId,originId,targetId){
   const activity=formationActivity(s,unitId,true)
   if(activity)return {ok:false,message:`部队${activityLabel(activity)}，请先结束当前任务`}
   if(!target||originId===targetId)return {ok:false,message:'请选择另一处村庄或据点'}
-  if(regionEnemyTroops(s,targetId)>0)return {ok:false,message:'该据点由敌军占领，请选择可进驻的地点'}
-
   const order=queueMarch(s,'region',target,[unitId],origin.id)
   detachGarrison(s,origin.id,unitId)
-  return {ok:true,order,message:`部队已从${origin.name}出发，前往${target.name}驻防`}
+  return {ok:true,order,message:`部队已从${origin.name}出发，前往${target.name}${regionEnemyTroops(s,targetId)>0?'交战':'驻防'}`}
 }
 
 export function normalizeMarches(s,raw){

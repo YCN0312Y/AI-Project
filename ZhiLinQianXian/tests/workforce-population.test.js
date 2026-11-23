@@ -4,7 +4,7 @@ import {freshSave,normalizeSave,setFormation} from '../js/state.js'
 import {stationTroops,villageOfFormation,placeVillageFacility,recallGarrison} from '../js/villages.js'
 import {availableWorkforce,validateAllocations} from '../js/workforce.js'
 import {farmTaskAt,startFarming,cancelFarming,formationActivity} from '../js/base.js'
-import {startProduction,startTreatment,recallFacility} from '../js/facilities.js'
+import {startProduction,recallFacility} from '../js/facilities.js'
 import {startTrainingTask} from '../js/training.js'
 import {advanceEconomy} from '../js/economy.js'
 import {donateFood,advanceLogistics,mobilizationRecord,mobilizationStatus,enableAllVillageMobilization,setAllVillagesMobilizing,setMobilizationActive,donateAllVillages,serveMealNow} from '../js/logistics.js'
@@ -35,17 +35,6 @@ test('同一驻军可派班代耕并另派人员生产，余员守村，原人�
   advanceEconomy(loaded,230,()=>1);assert.equal(loaded.productionTotals.rifle,10)
   recallFacility(loaded,'rifle');assert.equal(availableWorkforce(loaded,1),40);assert.equal(formationActivity(loaded,1),'garrison')
   assert.deepEqual(loaded.formations[0],original);assert.deepEqual(clone(loaded),loaded)
-})
-
-test('轻重医疗可从同一驻军分派不同人员，不能超派，结束后分别归还可派额度',()=>{
-  const s=setup(2);placeVillageFacility(s,'medical',2);s.wounded={light:8,heavy:2};s.heavyTreatmentStages=[2,0,0]
-  assert(startTreatment(s,'heavy',[1],2,part(10)).ok);assert(startTreatment(s,'light',[1],2,part(4)).ok)
-  assert.equal(availableWorkforce(s,1),26);assert.equal(validateAllocations(s,2,part(27),[1]).ok,false)
-  const loaded=clone(s);assert.deepEqual(loaded,s)
-  advanceEconomy(loaded,120,()=>1);assert.equal(loaded.wounded.light,0);assert.equal(loaded.recoveredTroops,8)
-  assert.equal(loaded.heavyTreatmentStages[1],2);assert.equal(availableWorkforce(loaded,1),26)
-  recallFacility(loaded,'light');assert.equal(availableWorkforce(loaded,1),30)
-  recallFacility(loaded,'heavy');assert.equal(availableWorkforce(loaded,1),40);assert.equal(villageOfFormation(loaded,1),2)
 })
 
 test('驻村整编也可选择一支帮本村种地，其他驻军仍空闲；外村田地不能直接占用本村人员',()=>{
@@ -121,16 +110,17 @@ test('地图村名下展示多支驻军，村庄人口可见；分遣班耕田�
   assert.equal(s.armoryTasks.rifle.workers,7);assert.equal(availableWorkforce(s,1),26);assert.equal(g.modal,'base-armory')
 })
 
-test('医疗部分遣可选临时人员小组，取消窗口不占兵，村庄驻军不限一支',()=>{
+test('兵工厂分遣可选临时人员小组，取消窗口不占兵，村庄驻军不限一支',()=>{
   const s=freshSave();for(let i=0;i<10;i++)setFormation(s,'squad',7)
   assert(stationTroops(s,2,s.formations.map(u=>u.id)).ok);assert.equal(s.garrisons[2].length,10)
-  const g=game(s);g.openVillage(2);draw(g);click(g,'village-medical');draw(g);click(g,'facility-detach');draw(g);click(g,'work-root-1');draw(g);click(g,'work-back')
-  assert.equal(availableWorkforce(s,1),7);assert.equal(s.medicalTasks.light,null)
+  const g=game(s);g.openVillage(2);draw(g);click(g,'village-armory');draw(g);click(g,'factory-product-bullets');draw(g)
+  click(g,'facility-detach');draw(g);click(g,'work-root-1');draw(g);click(g,'work-back')
+  assert.equal(availableWorkforce(s,1),7);assert.equal(s.armoryTasks.bullets,undefined)
   draw(g);click(g,'work-root-1');draw(g)
   const previousWx=globalThis.wx;let dialog;globalThis.wx={showModal:options=>{dialog=options}}
   try{click(g,'work-count');assert.equal(dialog.maxValue,7);dialog.success({confirm:true,content:'2'})}finally{if(previousWx===undefined)delete globalThis.wx;else globalThis.wx=previousWx}
   click(g,'work-add');draw(g);click(g,'work-root-2');draw(g);g.workCount=2;click(g,'work-confirm')
-  assert.equal(s.medicalTasks.light.workers,4);assert.equal(availableWorkforce(s,1),5);assert.equal(availableWorkforce(s,2),5)
+  assert.equal(s.armoryTasks.bullets.workers,4);assert.equal(availableWorkforce(s,1),5);assert.equal(availableWorkforce(s,2),5)
   assert.deepEqual(clone(s),s)
 })
 

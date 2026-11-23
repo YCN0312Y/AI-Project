@@ -1,8 +1,8 @@
-import { WEAPONS } from './weapons.js'
+import { WEAPONS,restoreBulletCount } from './weapons.js'
 import { FOODS,FISH,DISHES,freshLogistics,RECRUITMENT,RATIONS,HUNGER,recruitmentFoodCost,recruitmentSupport,VILLAGE_SUPPLY_IDS,normalizeVillageMobilization } from './logistics.js'
 import { freshShop,normalizeShop,buyStock } from './shop.js'
 import { freshBase,normalizeBase,farmWorkers,farmReserveWorkers,farmTasks,formationActivity,activityLabel,activeFormationIds } from './base.js'
-import {freshFacilities,normalizeFacilities,recordBattleCasualties,finalizeBattleCasualties} from './facilities.js'
+import {freshFacilities,normalizeFacilities} from './facilities.js'
 import {normalizeTraining} from './training.js'
 import {freshVillages,normalizeVillages,reconcileVillageGarrisons,villageOfFormation,villageEnemyTroops} from './villages.js'
 import {ALL_VILLAGES,FORMER_BASE_VILLAGE_ID,mapLocation,mapRegion,mapVillage} from './world-map.js'
@@ -12,19 +12,6 @@ import {freshGathering,normalizeGathering} from './gathering.js'
 import {freshRaids,normalizeRaids} from './raids.js'
 export const SAVE_KEY = 'zhihuiqianxian.save.v1'
 const FORMATION_NUMBER_VERSION=1
-// 职务由累计军功决定；沿用存档中的 xp 字段，保留已有战功。
-export const RANK_STEPS = [
-  {merit:0,name:'新兵'},
-  {merit:7,name:'班长'},
-  {merit:25,name:'排长'},
-  {merit:100,name:'连长'},
-  {merit:400,name:'营长'},
-  {merit:1000,name:'团长'},
-  {merit:3000,name:'旅长'},
-  {merit:8000,name:'师长'},
-  {merit:30000,name:'军长'},
-]
-export const RANKS = RANK_STEPS.map(v=>v.name)
 export const FORMATION_TYPES = [
   {id:'squad',name:'班',min:7,max:12},
   {id:'platoon',name:'排',min:25,max:40},
@@ -397,7 +384,6 @@ export function applyBattleLosses(s,battle,includeSurvivors=false){
     }
     s.troops=Math.max(0,s.troops-lost);battle.lostTroops=(battle.lostTroops||0)+lost
     inheritFallenFormations(s,fallen,battle)
-    if(lost)recordBattleCasualties(s,battle,lost)
     return lost
   }
   let lost=0
@@ -411,23 +397,11 @@ export function applyBattleLosses(s,battle,includeSurvivors=false){
     retainFormationSurvivors(s,root.id,survivors,fallen)
     s.troops=Math.max(0,s.troops-casualties)
     battle.lostTroops=(battle.lostTroops||0)+casualties
-    recordBattleCasualties(s,battle,casualties)
     if(!survivors)battle.lostUnits=(battle.lostUnits||0)+1
     lost+=casualties
   }
   inheritFallenFormations(s,fallen,battle)
   return lost
-}
-export function rankIndex(merit){
-  let i=0
-  for(let k=0;k<RANK_STEPS.length;k++)if(merit>=RANK_STEPS[k].merit)i=k
-  return i
-}
-export const rank = s => RANK_STEPS[rankIndex(s.xp)].name
-export function rankProgress(s){
-  const i=rankIndex(s.xp),cur=RANK_STEPS[i],next=RANK_STEPS[i+1]
-  return {name:cur.name,next:next?next.name:null,nextMerit:next?next.merit:null,
-    ratio:next?Math.max(0,Math.min(1,(s.xp-cur.merit)/(next.merit-cur.merit))):1}
 }
 export const MODES = [
   {id:'campaign',name:'大地图',en:'WORLD MAP',color:'#b0c881',tag:'战区态势',desc:'查看战区，选择部队行动。'},
@@ -435,11 +409,8 @@ export const MODES = [
   {id:'base',name:'根据地',en:'BASE AREA',color:'#87bac0',tag:'建设发展',desc:'训练、耕地，建设部队根据地。'},
 ]
 export const GOODS = [
-  {id:'rifleAmmo',name:'步枪子弹',category:'ammo',desc:'步枪配套弹药 · 库存储备',price:40,amount:30,unit:'发',icon:'ammo'},
-  {id:'pistolAmmo',name:'手枪子弹',category:'ammo',desc:'手枪配套弹药 · 库存储备',price:25,amount:30,unit:'发',icon:'ammo'},
-  {id:'machinegunAmmo',name:'轻机枪子弹',category:'ammo',desc:'轻机枪配套弹药 · 库存储备',price:60,amount:60,unit:'发',icon:'ammo'},
-  {id:'sniperAmmo',name:'狙击枪子弹',category:'ammo',desc:'狙击枪配套弹药 · 库存储备',price:50,amount:10,unit:'发',icon:'ammo'},
-  {id:'mortarAmmo',name:'迫击炮弹',category:'ammo',desc:'迫击炮配套弹药 · 库存储备',price:80,amount:5,unit:'发',icon:'shell'},
+  {id:'bullets',name:'子弹',category:'ammo',desc:'步枪、手枪、轻机枪、狙击枪通用',price:40,amount:30,unit:'发',icon:'ammo'},
+  {id:'mortarAmmo',name:'迫击炮弹',category:'ammo',desc:'迫击炮开火时消耗',price:80,amount:5,unit:'发',icon:'shell'},
   {id:'grenades',name:'手雷',category:'ammo',desc:'投掷物资 · 库存储备',price:60,amount:1,unit:'枚',icon:'grenade'},
   {id:'bandages',name:'绷带',category:'medical',desc:'基础医疗物资 · 库存储备',price:30,amount:1,unit:'卷',icon:'bandage'},
   {id:'medkits',name:'医疗包',category:'medical',desc:'医疗物资储备',price:90,amount:1,unit:'个',icon:'medical'},
@@ -464,11 +435,25 @@ export function applyRequestedRiceSupply(s){
   s.rice=Math.min(10000000,(s.rice||0)+1000000)
   s.warehouseRiceSupply20261117=true;return true
 }
-export function freshSave(){return {...freshRaids(),...freshGathering(),...freshLogistics(),...freshShop(),...freshBase(),...freshFacilities(),...freshVillages(),...freshRegions(),...freshMarches(),baseVillageId:null,trainingTask:null,warehouseRiceSupply20261117:true,warehouseFoodAdjustmentVersion:1,name:'新晋指挥官',xp:0,coins:600,troops:120,medkits:3,shells:2,rifleAmmo:0,pistolAmmo:0,machinegunAmmo:0,sniperAmmo:0,mortarAmmo:0,grenades:0,bandages:0,stage:1,wins:0,kills:0,bestWave:0,expeditions:0,trainingSessions:0,reserveTrainingXp:0,recruitedTroops:0,recruitmentCount:0,claimed:[],formations:[],formationNumberVersion:FORMATION_NUMBER_VERSION,weaponStockVersion:2,weaponCounts:Object.fromEntries(WEAPONS.map(w=>[w.id,w.id==='rifle'?120:0])),equippedWeapon:'rifle',settings:{effects:true,vibration:true,music:true}}}
+export function freshSave(){return {...freshRaids(),...freshGathering(),...freshLogistics(),...freshShop(),...freshBase(),...freshFacilities(),...freshVillages(),...freshRegions(),...freshMarches(),baseVillageId:null,trainingTask:null,warehouseRiceSupply20261117:true,warehouseFoodAdjustmentVersion:1,name:'新晋指挥官',coins:600,troops:120,medkits:3,shells:2,bullets:0,mortarAmmo:0,grenades:0,bandages:0,stage:1,wins:0,kills:0,bestWave:0,expeditions:0,trainingSessions:0,reserveTrainingXp:0,recruitedTroops:0,recruitmentCount:0,claimed:[],formations:[],formationNumberVersion:FORMATION_NUMBER_VERSION,weaponStockVersion:2,weaponCounts:Object.fromEntries(WEAPONS.map(w=>[w.id,w.id==='rifle'?120:0])),equippedWeapon:'rifle',settings:{effects:true,vibration:true,music:true}}}
 export function chooseStartingBase(s,villageId){
   if(s.baseVillageId!==null||!mapVillage(villageId)||villageEnemyTroops(s,villageId)>0)return false
   s.baseVillageId=villageId
   return true
+}
+export function baseRelocationError(s,villageId){
+  if(s.baseVillageId===null)return '请先选择初始根据地'
+  if(!mapVillage(villageId)||s.baseVillageId===villageId)return '请选择另一座村庄'
+  if(villageEnemyTroops(s,villageId)>0)return '该村已被敌军占领'
+  if(s.raidAlerts.some(alert=>alert.siteId===villageId))return '该村正在遭袭，请先击退敌军'
+  return ''
+}
+export function relocateBase(s,villageId){
+  const message=baseRelocationError(s,villageId)
+  if(message)return {ok:false,message}
+  s.baseVillageId=villageId
+  syncIdleBranches(s)
+  return {ok:true}
 }
 export function normalizeSave(raw){
   const s=freshSave();if(!raw||typeof raw!=='object')return s
@@ -478,9 +463,10 @@ export function normalizeSave(raw){
   Object.assign(s,normalizeShop(raw))
   if(Number.isFinite(raw.mobilizationDiscounts))s.mobilizationDiscounts=Math.max(0,Math.min(10000000,Math.floor(raw.mobilizationDiscounts)))
   if(typeof raw.name==='string'&&raw.name.trim())s.name=Array.from(raw.name.trim()).slice(0,12).join('')
-  for(const key of new Set(['xp','coins','shells','mobilizationFood','mobilizationCoins','lastMealShortage','lastMealServed','foodConsumed','dishesCooked','villageSuppliesReceived','donationStreak','troops','stage','wins','kills','bestWave','expeditions','trainingSessions','recruitedTroops','recruitmentCount',FISH.id,...GOODS.map(item=>item.id),...DISHES.map(dish=>dish.id)])){
+  for(const key of new Set(['coins','shells','mobilizationFood','mobilizationCoins','lastMealShortage','lastMealServed','foodConsumed','dishesCooked','villageSuppliesReceived','donationStreak','troops','stage','wins','kills','bestWave','expeditions','trainingSessions','recruitedTroops','recruitmentCount',FISH.id,...GOODS.map(item=>item.id),...DISHES.map(dish=>dish.id)])){
     if(Number.isFinite(raw[key]))s[key]=Math.max(0,Math.min(10000000,Math.floor(raw[key])))
   }
+  s.bullets=restoreBulletCount(raw)
   if(Number.isSafeInteger(raw.villageSupplyCursor)&&raw.villageSupplyCursor>=0&&raw.villageSupplyCursor<VILLAGE_SUPPLY_IDS.length)s.villageSupplyCursor=raw.villageSupplyCursor
   for(const id of VILLAGE_SUPPLY_IDS)if(Number.isFinite(raw.lastVillageSupplies?.[id])&&raw.lastVillageSupplies[id]>0)s.lastVillageSupplies[id]=Math.min(10000000,Math.floor(raw.lastVillageSupplies[id]))
   if(typeof raw.mobilizationActive==='boolean')s.mobilizationActive=raw.mobilizationActive
@@ -559,11 +545,10 @@ export function claim(s,id){const m=MISSIONS.find(v=>v.id===id);if(!m||s.claimed
 export function settle(s,battle){
   if(battle.settled)return null
   applyBattleLosses(s,battle,true)
-  finalizeBattleCasualties(s,battle);battle.settled=true
+  battle.settled=true
   const win=battle.won, waves=Math.max(0,battle.wave-1)
   const coins=win?120+battle.level*20:battle.kills*4+(battle.mode==='defense'?waves*25:0)
-  const xp=win?85+battle.level*5:Math.min(150,battle.kills*3)
-  s.coins+=coins;s.xp+=xp;s.kills+=battle.kills
+  s.coins+=coins;s.kills+=battle.kills
   if(win)s.wins++
   if(battle.mode==='campaign'&&win&&!battle.regionId&&!battle.raidId)s.stage=Math.min(12,Math.max(s.stage,battle.level+1))
   if(battle.mode==='defense')s.bestWave=Math.max(s.bestWave,battle.wave)
@@ -576,7 +561,7 @@ export function settle(s,battle){
       s.weaponCounts[weapon.id]+=added;capturedWeapons[weapon.id]=added
     }
   }
-  return {coins,xp,win,kills:battle.kills,wave:battle.wave,lostTroops:battle.lostTroops||0,lostUnits:battle.lostUnits||0,directDeaths:battle.directDeaths||0,woundedLight:battle.woundedLight||0,woundedHeavy:battle.woundedHeavy||0,capturedWeapons}
+  return {coins,win,kills:battle.kills,wave:battle.wave,lostTroops:battle.lostTroops||0,lostUnits:battle.lostUnits||0,capturedWeapons}
 }
 // 驻防地点节点：村庄用所属地区(或村庄)编号，地区驻防用地区编号；不在驻防则为 null。
 export function garrisonSite(s,id){
@@ -660,7 +645,6 @@ export function baseForces(s){
     if(formationActivity(s,u.id)==='battle')return true
     if(fieldWorkers.has(u.id))return true
     if(Object.values(s.armoryTasks||{}).some(task=>task.villageId&&task.unitIds.includes(u.id)))return true
-    if(Object.values(s.medicalTasks||{}).some(t=>t&&(t.unitIds||[]).includes(u.id)&&t.villageId))return true
     if(Object.values(s.villageTrainingTasks||{}).some(t=>t&&!t.settled&&t.unitId===u.id))return true
     return false
   }

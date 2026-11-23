@@ -5,8 +5,8 @@ import vm from 'node:vm'
 import {Game} from '../js/game.js'
 import {controlRegionGeometry,regionBoundary,regionContains} from '../js/control-regions.js'
 import {stationTroops,recallGarrison,villageLocalUnits,villageControlled} from '../js/villages.js'
-import {freshSave,normalizeSave,chooseStartingBase,setFormation,baseForces,splitGarrisonUnit} from '../js/state.js'
-import {startMarch,advanceMarches} from '../js/marching.js'
+import {freshSave,normalizeSave,chooseStartingBase,relocateBase,setFormation,baseForces,formation,splitGarrisonUnit} from '../js/state.js'
+import {startMarch,advanceMarches,marchPosition} from '../js/marching.js'
 import {farmTaskAt,startFarming,formationActivity} from '../js/base.js'
 import {campaignDeployment} from '../js/campaign.js'
 import {startTrainingTask} from '../js/training.js'
@@ -173,6 +173,52 @@ test('新档在地图上确认无敌军的外围村庄后，从该村发兵，�
   }finally{if(oldWx===undefined)delete globalThis.wx;else globalThis.wx=oldWx;if(oldFrame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=oldFrame}
 })
 
+test('游玩中通过地图或驻村管理迁移根据地，刷新后从新址派兵，原驻防和行军保留',()=>{
+  const g=game(),s=g.save,old=MAP_SITES[0],destination=REGION_VILLAGES.find(v=>!mapRegion(v.regionId).enemyTroops)
+  const enemy=REGION_VILLAGES.find(v=>mapRegion(v.regionId).enemyTroops)
+  const modal=()=>{g.buttons=[];g.drawModal()}
+  g.persist=()=>{g.saved=structuredClone(s)}
+  assert(chooseStartingBase(s,old.id))
+  for(let i=0;i<3;i++)assert(setFormation(s,'squad',10).ok)
+  assert(stationTroops(s,old.id,[1]).ok);assert(stationTroops(s,2,[2]).ok)
+  const marching=startMarch(s,'village',3,[3]);assert(marching.ok)
+  const before=structuredClone(s)
+  g.openVillage(2);modal();click(g,'village-relocate-base');draw(g)
+  assert.equal(g.mapSelected,2);assert(g.buttons.some(button=>button.id==='map-base-confirm'))
+  click(g,'map-base-cancel');assert.equal(g.modal,'base');assert.deepEqual(s,before);assert.equal(g.saved,undefined)
+  modal();click(g,'base-relocate');fitCamera(g.mapCamera);draw(g)
+  assert(!g.buttons.some(button=>button.id==='map-region-'+enemy.regionId))
+  click(g,'map-region-'+destination.regionId);draw(g);click(g,'map-base-confirm')
+  assert.equal(g.relocatingBase,false);assert.equal(g.mapSelected,'base');assert.equal(mapBase(s).villageId,destination.id)
+  assert(villageControlled(s,old.id)&&villageControlled(s,destination.id))
+  assert.deepEqual(s,{...before,baseVillageId:destination.id});assert.deepEqual(normalizeSave(g.saved),s)
+  draw(g);assert(g.buttons.some(button=>button.id==='map-site-base'))
+  const restored=normalizeSave(g.saved)
+  assert.deepEqual(marchPosition(restored.marchingOrders[0]),{x:old.x,y:old.y})
+  assert(recallGarrison(restored,2,2).ok)
+  const next=startMarch(restored,'village',2,[2]);assert(next.ok)
+  assert.deepEqual(marchPosition(next.order),{x:destination.x,y:destination.y})
+})
+
+test('迁移禁止敌占和正在遇袭的村庄，旧根据地的代耕进度跨存档保留',()=>{
+  const g=game(),s=g.save,old=MAP_SITES[0],newBase=MAP_SITES[1]
+  const field=MAP_FIELDS.find(item=>item.villageId===old.id)
+  const enemy=REGION_VILLAGES.find(v=>mapRegion(v.regionId).enemyTroops)
+  assert(chooseStartingBase(s,old.id));assert(startFarming(s,'help',30,field.crop,null,field.id).ok)
+  g.updateLogistics(12,()=>0)
+  const working=structuredClone(farmTaskAt(s,field.id))
+  assert.equal(working.phase,'working')
+  assert.match(relocateBase(s,enemy.id).message,/敌军占领/)
+  s.raidAlerts=[{siteId:newBase.id}]
+  assert.match(relocateBase(s,newBase.id).message,/正在遭袭/);assert.equal(s.baseVillageId,old.id)
+  s.raidAlerts=[]
+  assert(relocateBase(s,newBase.id).ok);assert(!villageControlled(s,old.id))
+  g.save=normalizeSave(s);assert.deepEqual(farmTaskAt(g.save,field.id),working)
+  g.openMapField(field.id);assert.equal(g.modal,'farm')
+  g.updateLogistics(70,()=>0);assert.equal(farmTaskAt(g.save,field.id),null)
+  assert.equal(g.save.farmHarvested,9)
+})
+
 test('旧址生成的禾川村保持可定位，村庄分散后全图可见且点位不相互遮挡',()=>{
   for(const stage of [1,6,12]){
     const g=game();g.save.stage=stage;g.open('campaign');draw(g)
@@ -323,6 +369,35 @@ test('点击田地派编制代耕，保存田块归属，完工后按出工人�
   g.updateLogistics(1,()=>0);assert.equal(g.save.troops,original.troops+1)
 })
 
+test('新开局可从枣林村根据地派未编人员代耕，刷新和返程期间保留占用',()=>{
+  const g=game(),field=MAP_FIELDS.find(field=>field.villageId===5)
+  assert(chooseStartingBase(g.save,5));g.openWorldMap();draw(g)
+  click(g,'map-field-'+field.id);modal(g)
+  const oldWx=globalThis.wx
+  globalThis.wx={showModal(options){assert.equal(options.content,'30');options.success({confirm:true,content:'30'})}}
+  try{click(g,'farm-source-reserve')}finally{if(oldWx===undefined)delete globalThis.wx;else globalThis.wx=oldWx}
+  assert.equal(farmTaskAt(g.save,field.id).phase,'outbound')
+  assert.equal(baseForces(g.save).unassigned,90)
+  assert.equal(setFormation(g.save,'company',100).ok,false)
+  g.save=normalizeSave(g.save);modal(g)
+  assert.equal(farmTaskAt(g.save,field.id).workers,30)
+  g.openWorldMap();draw(g)
+  g.updateLogistics(64,()=>0)
+  assert.equal(farmTaskAt(g.save,field.id)?.phase,'returning')
+  assert.equal(g.save.farmHarvested,9)
+  assert.equal(formation(g.save).unassignedTroops,g.save.troops-30)
+  g.updateLogistics(10,()=>0)
+  assert.equal(farmTaskAt(g.save,field.id),null)
+  assert.equal(formation(g.save).unassignedTroops,g.save.troops)
+
+  assert(setFormation(g.save,'squad',10).ok)
+  g.updateLogistics(300,()=>0);g.openMapField(field.id);modal(g)
+  click(g,'farm-unit-1');modal(g);click(g,'farm-start')
+  const loaded=normalizeSave(g.save)
+  assert.deepEqual(farmTaskAt(loaded,field.id).unitIds,[1])
+  assert.equal(formationActivity(loaded,1),'farm')
+})
+
 test('不同村的田地可同时派兵，召回只影响当前田地，拖动不会打开窗口',()=>{
   const g=game(.5);setFormation(g.save,'squad',10);setFormation(g.save,'squad',7);setFormation(g.save,'squad',7);stationTroops(g.save,MAP_FIELDS[0].villageId,[2]);stationTroops(g.save,MAP_FIELDS[1].villageId,[3]);g.open('campaign');draw(g)
   const [first,second]=MAP_FIELDS,p=mapToScreen(g.mapCamera,first)
@@ -376,4 +451,32 @@ test('根据地中心显示未派出兵力，派出、驻村分兵与撤回时�
   assert(recallGarrison(g.save,1,1).ok);assert(stationTroops(g.save,2,[split.id]).ok)
   assert.equal(recallGarrison(g.save,2,split.id).destination,'base')
   labels.length=0;g.openWorldMap();draw(g);assert(labels.includes('根据地中心 · 兵力 120人'))
+})
+
+test('设置中点击暂停游戏后停止时间、音乐并锁定一切操作，只能点击继续游戏恢复',()=>{
+  const oldFrame=globalThis.requestAnimationFrame,oldWx=globalThis.wx
+  let plays=0,pauses=0
+  globalThis.requestAnimationFrame=()=>{}
+  globalThis.wx={...oldWx,createInnerAudioContext:()=>({play(){plays++},pause(){pauses++}})}
+  try{
+    const g=game();setFormation(g.save,'squad',10);assert(startTrainingTask(g.save,1).ok)
+    g.logisticsActive=true;g.last=1000;g.canvas={width:1440,height:810};g.dpr=1
+    g.openWorldMap();draw(g);assert.equal(g.buttons.some(b=>b.id==='map-pause'),false)
+    const playsBefore=plays
+    g.open('settings');modal(g);click(g,'settings-pause')
+    assert.equal(g.paused,true);assert.equal(g.modal,null);assert.equal(pauses,1)
+    g.render();assert.deepEqual(g.buttons.map(b=>b.id),['game-resume'])
+    const before=structuredClone(g.save),camBefore={...g.mapCamera}
+    g.touch(touch(g,[200,300]));g.touchMove(touch(g,[400,400]));g.touchEnd(lift(g,400,400))
+    g.mouseWheel({clientX:720,clientY:400,deltaY:-120,deltaMode:0})
+    assert.deepEqual(g.mapCamera,camBefore);assert.equal(g.modal,null)
+    g.tick(6000);assert.deepEqual(g.save,before);assert.equal(plays,playsBefore)
+    const resume=g.buttons[0]
+    g.touch(touch(g,[resume.x+resume.w/2,resume.y+resume.h/2]))
+    assert.equal(g.paused,false);assert(plays>playsBefore)
+    g.tick(17000);assert.equal(g.save.trainingSessions,1)
+  }finally{
+    if(oldFrame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=oldFrame
+    if(oldWx===undefined)delete globalThis.wx;else globalThis.wx=oldWx
+  }
 })

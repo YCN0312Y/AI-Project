@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>正式存档 · 指挥前线</title>
+<style>
+  :root { color-scheme: dark; font: 16px system-ui, sans-serif; background: #15221a; color: #f0f2e3; }
+  body { margin: 0; padding: 32px 20px; }
+  main { max-width: 34rem; margin: 8vh auto; padding: 28px; background: #202f25; border: 1px solid #566847; }
+  h1, h2 { margin: 0 0 12px; }
+  p, label { color: #c1c9b4; }
+  button, select, a { font: inherit; }
+  button, select { padding: 8px 12px; background: #30422b; color: #f0f2e3; border: 1px solid #778b5d; }
+  button:disabled { opacity: .5; }
+  button, a { cursor: pointer; }
+  a { color: #c4d99b; }
+  section { margin-top: 24px; padding-top: 20px; border-top: 1px solid #566847; }
+  label { display: block; margin-bottom: 8px; }
+</style>
+<main>
+  <h1>正式存档</h1>
+  <p>重新开始会先在此浏览器中备份当前的正式存档，再进入开局选址。</p>
+  <button id="restart" disabled>备份并重新开始</button>
+  <p id="status" role="status">正在读取存档…</p>
+  <a href="/">返回游戏</a>
+  <section id="backups" hidden>
+    <h2>恢复备份</h2>
+    <label for="backup">选择备份时间</label>
+    <select id="backup"></select>
+    <button id="restore">恢复所选存档</button>
+  </section>
+</main>
+<script type="module">
+  import {SAVE_KEY,freshSave} from '../js/state.js'
+
+  const prefix=SAVE_KEY+'.backup.'
+  const restart=document.getElementById('restart'),restore=document.getElementById('restore')
+  const backups=document.getElementById('backups'),backup=document.getElementById('backup')
+  const status=document.getElementById('status')
+  const local=['localhost','127.0.0.1','[::1]'].includes(location.hostname)
+
+  function refreshBackups(){
+    const keys=Object.keys(localStorage).filter(key=>key.startsWith(prefix)).sort().reverse()
+    backup.replaceChildren(...keys.map(key=>{
+      const time=Number(key.slice(prefix.length).split('-')[0])
+      return new Option(new Date(time).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}),key)
+    }))
+    backups.hidden=!keys.length
+  }
+
+  function replaceSave(next){
+    if(!local)return
+    const current=localStorage.getItem(SAVE_KEY)
+    if(current!==null&&current!==next){
+      const key=prefix+Date.now()+'-'+crypto.randomUUID()
+      localStorage.setItem(key,current)
+      if(localStorage.getItem(key)!==current)throw Error('未能确认备份')
+    }
+    localStorage.setItem(SAVE_KEY,next)
+  }
+
+  restart.addEventListener('click',()=>{
+    try{
+      const next=JSON.stringify(freshSave())
+      replaceSave(next)
+      refreshBackups()
+      restart.disabled=true
+      status.textContent='正式游戏已重置。可以返回游戏选择根据地。'
+    }catch{
+      status.textContent='暂时无法完成重置，请检查浏览器存储空间。'
+    }
+  })
+  restore.addEventListener('click',()=>{
+    try{
+      const saved=localStorage.getItem(backup.value)
+      if(saved===null){refreshBackups();status.textContent='所选备份已不可用。';return}
+      replaceSave(saved)
+      refreshBackups()
+      restart.disabled=false
+      status.textContent='已恢复所选备份。可以返回游戏继续。'
+    }catch{
+      status.textContent='暂时无法恢复，请检查浏览器存储空间。'
+    }
+  })
+  if(local){
+    try{
+      refreshBackups()
+      const current=localStorage.getItem(SAVE_KEY)
+      const started=current!==null&&JSON.parse(current)?.baseVillageId!==null
+      restart.disabled=!started
+      status.textContent=started?'已找到本浏览器的正式存档。':'正式游戏正在等待开局选址。'
+    }catch{
+      status.textContent='暂时无法读取此浏览器的正式存档。'
+    }
+  }else status.textContent='此页面仅供本机预览使用。'
+</script>
+</html>

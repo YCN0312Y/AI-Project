@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { GOODS,FORMATION_TYPES,freshSave,normalizeSave,rank,rankProgress,formation,formationName,formationRoots,formationParent,lineageRows,splitGarrisonUnit,previewFormationMerge,mergeFormations,unmergeFormation,formationResources,autoFormationWeapons,setFormation,removeFormation,purchase,purchaseWeapon,equipWeapon,claim,settle } from '../js/state.js'
+import { GOODS,FORMATION_TYPES,freshSave,normalizeSave,formation,formationName,formationRoots,formationParent,lineageRows,splitGarrisonUnit,previewFormationMerge,mergeFormations,unmergeFormation,formationResources,autoFormationWeapons,setFormation,removeFormation,purchase,purchaseWeapon,equipWeapon,claim,settle } from '../js/state.js'
 import { WEAPONS } from '../js/weapons.js'
 import {stationTroops} from '../js/villages.js'
 import { Game } from '../js/game.js'
@@ -58,39 +58,35 @@ test('背景音乐设置默认开启，可持久化且拒绝非法值',()=>{
   assert.equal(normalizeSave({settings:{music:'yes'}}).settings.music,true)
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
 })
-test('职务按累计军功晋升，逐档验证门槛前后，兵力不影响职务',()=>{
-  const table=[['新兵',0],['班长',7],['排长',25],['连长',100],['营长',400],['团长',1000],['旅长',3000],['师长',8000],['军长',30000]]
-  const s=freshSave()
-  assert.equal(s.troops,120);assert.equal(rank(s),'新兵')
-  assert.equal(rankProgress(s).next,'班长');assert.equal(rankProgress(s).nextMerit,7);assert.equal(rankProgress(s).ratio,0)
-  for(let i=1;i<table.length;i++){
-    const [name,merit]=table[i]
-    s.xp=merit-1;assert.equal(rank(s),table[i-1][0]);assert.equal(rankProgress(s).nextMerit,merit)
-    s.xp=merit;assert.equal(rank(s),name);assert.equal(s.xp,merit)
-    assert.equal(rankProgress(s).ratio,i===table.length-1?1:0)
-    s.xp=merit+1;assert.equal(rank(s),name)
-  }
-  s.xp=90;assert.equal(rank(s),'排长');assert.equal(rankProgress(s).next,'连长');assert.equal(rankProgress(s).nextMerit,100)
-  s.xp=250;assert.equal(rank(s),'连长');assert.equal(rankProgress(s).ratio,.5)
-  for(const troops of [120,216,999999]){s.troops=troops;assert.equal(rank(s),'连长')}
-  s.xp=999999;assert.equal(rank(s),'军长');assert.equal(rankProgress(s).next,null);assert.equal(rankProgress(s).nextMerit,null);assert.equal(rankProgress(s).ratio,1)
-  const t=freshSave();assert(purchase(t,'millet'));assert.equal(t.troops,120);assert.equal(rank(t),'新兵')
+test('总指挥资料显示昵称、兵力、胜场和修改名称入口',()=>{
+  const g=Object.create(Game.prototype),labels=[]
+  g.ctx=new Proxy({fillText:value=>labels.push(value)},{get:(o,key)=>o[key]??(()=>{}),set:(o,key,value)=>(o[key]=value,true)})
+  g.save=normalizeSave({name:'前线指挥官',troops:120,wins:3,xp:30000});g.buttons=[];g.modal='army'
+  g.drawModal()
+  assert(labels.includes('总指挥'));assert(labels.includes('前线指挥官'))
+  assert(labels.includes('部队兵力 120    /    累计胜利 3'))
+  assert(!labels.some(label=>/军功|职务|晋升/.test(label)))
+  assert(g.buttons.some(b=>b.id==='rename'))
 })
 
-test('旧存档保留累计军功并重新判职，战斗军功即时晋升且不重复结算',()=>{
-  const s=normalizeSave({name:'老指挥官',xp:90,troops:120,coins:900,wins:1})
-  assert.equal(s.xp,90);assert.equal(s.troops,120);assert.equal(s.coins,900);assert.equal(s.wins,1);assert.equal(rank(s),'排长')
+test('旧存档和战报移除军功，战斗仍发金币并且只结算一次',()=>{
+  const s=normalizeSave({name:'老指挥官',xp:90,troops:120,coins:900,wins:1,reserveTrainingXp:120,
+    raidReports:[{id:1,siteId:1,force:12,outcome:'won',xp:90,coins:140,expiresAt:Date.now()+10000}]})
+  assert(!Object.hasOwn(freshSave(),'xp'));assert(!Object.hasOwn(s,'xp'))
+  assert.equal(s.troops,120);assert.equal(s.coins,900);assert.equal(s.wins,1);assert.equal(s.reserveTrainingXp,120)
+  assert.equal(s.raidReports[0].coins,140);assert(!Object.hasOwn(s.raidReports[0],'xp'))
   const b=new Battle('campaign',1,120);b.kills=4
   const reward=settle(s,b)
-  assert.equal(reward.xp,12);assert.equal(s.xp,102);assert.equal(rank(s),'连长')
-  assert.equal(settle(s,b),null);assert.equal(s.xp,102)
+  assert(!Object.hasOwn(reward,'xp'));assert(!Object.hasOwn(s,'xp'))
+  assert.equal(reward.coins,16);assert.equal(s.kills,4)
+  assert.equal(settle(s,b),null);assert.equal(s.coins,916)
   const restored=normalizeSave(JSON.parse(JSON.stringify(s)))
-  assert.deepEqual(restored,s);assert.equal(rank(restored),'连长');assert.equal(rankProgress(restored).nextMerit,400)
+  assert.deepEqual(restored,s)
 })
 
 test('商城各类物资按份数入库，余额不足不扣款，刷新后保留',()=>{
   const s=freshSave();s.coins=5000
-  for(const item of GOODS.filter(item=>item.id!=='machinegunAmmo')){
+  for(const item of GOODS){
     const before=s[item.id],coins=s.coins
     assert(purchase(s,item.id));assert.equal(s[item.id],before+item.amount);assert.equal(s.coins,coins-item.price)
   }
@@ -100,9 +96,9 @@ test('商城各类物资按份数入库，余额不足不扣款，刷新后保�
   assert.equal(purchase(s,'unknown'),false);assert.equal(JSON.stringify(s),before)
   const old=normalizeSave({coins:333,medkits:7,shells:4,stage:9,weapons:['rifle','sniper'],equippedWeapon:'sniper'})
   assert.equal(old.medkits,7);assert.equal(old.shells,4);assert.equal(old.stage,9);assert.equal(old.equippedWeapon,'sniper')
-  for(const id of ['rifleAmmo','pistolAmmo','machinegunAmmo','sniperAmmo','mortarAmmo','grenades','bandages'])assert.equal(old[id],0)
+  for(const id of ['bullets','mortarAmmo','grenades','bandages'])assert.equal(old[id],0)
   const invalid=normalizeSave({rifleAmmo:-3,pistolAmmo:NaN,grenades:Infinity,bandages:2.9,mortarAmmo:1e20})
-  assert.equal(invalid.rifleAmmo,0);assert.equal(invalid.pistolAmmo,0);assert.equal(invalid.grenades,0);assert.equal(invalid.bandages,2);assert.equal(invalid.mortarAmmo,10000000)
+  assert.equal(invalid.bullets,0);assert.equal(invalid.grenades,0);assert.equal(invalid.bandages,2);assert.equal(invalid.mortarAmmo,10000000)
 })
 
 test('手枪可以购买、装备与持久化，使用独立射程和伤害',()=>{
@@ -129,9 +125,9 @@ test('商城提供购买入口，仓库展示库存，按钮位于面板内',()=
   assert.equal(g.save.weaponCounts.pistol,2);g.open('shop')
   for(const category of ['ammo','medical']){
     g.inventoryTab=category;draw()
-    for(const item of GOODS.filter(v=>v.category===category))assert.equal(g.buttons.some(b=>b.id==='buy-'+item.id),item.id!=='machinegunAmmo')
+    for(const item of GOODS.filter(v=>v.category===category))assert(g.buttons.some(b=>b.id==='buy-'+item.id))
   }
-  g.inventoryTab='ammo';draw();g.buttons.find(b=>b.id==='buy-rifleAmmo').fn();assert.equal(g.save.rifleAmmo,30)
+  g.inventoryTab='ammo';draw();g.buttons.find(b=>b.id==='buy-bullets').fn();assert.equal(g.save.bullets,30)
   g.open('warehouse');g.inventoryTab='ammo';draw();assert.equal(g.buttons.some(b=>b.id.startsWith('buy-')),false)
   g.open('formation');draw();assert(g.buttons.some(b=>b.id==='formation-shop'))
   g.buttons.find(b=>b.id==='formation-shop').fn();assert.equal(g.modal,'shop')
@@ -162,7 +158,7 @@ test('初始步枪补齐到 120 把，旧存档购买数量保留且重复加载
   assert.equal(freshSave().weaponCounts.rifle,120)
   const old=normalizeSave({troops:140,coins:432,weaponCounts:{rifle:4,pistol:3},rifleAmmo:70})
   assert.equal(old.weaponCounts.rifle,123);assert.equal(old.weaponCounts.pistol,3)
-  assert.equal(old.troops,140);assert.equal(old.coins,432);assert.equal(old.rifleAmmo,70)
+  assert.equal(old.troops,140);assert.equal(old.coins,432);assert.equal(old.bullets,70)
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(old))),old)
   assert.equal(normalizeSave({weaponStockVersion:2,weaponCounts:{rifle:2}}).weaponCounts.rifle,2)
 })
@@ -247,13 +243,14 @@ test('人数超过未编人员时编辑页即时提示，分类总览不展示�
   g.editFormation(g.save.formations[0]);assert.equal(formationResources(g.save,g.formationDraft.id).troops,120)
 })
 
-test('出战使用编制所配的多种武器，每种火力按配发人数分摊',()=>{
-  const s=freshSave();s.weaponCounts.machinegun=2
+test('混编部队按实际配枪人数射击，步枪与轻机枪从同一库存扣弹',()=>{
+  const s=freshSave();s.weaponCounts.machinegun=2;s.bullets=10
   assert(setFormation(s,'squad',10,null,{rifle:8,machinegun:2}).ok)
   const g=Object.create(Game.prototype);g.save=s;g.start('campaign',1,[1])
   const b=g.battle,unit=b.units[0];assert.deepEqual(unit.groups.map(group=>[group.weapon.id,group.troops]),[['rifle',8],['machinegun',2]])
   b.pending=0;b.enemies=[{x:unit.x+200,y:unit.y,hp:1000,maxHp:1000,cool:100}]
-  b.update(.21);assert(Math.abs(b.enemies[0].hp-(1000-7.25*.8-7.25*.8*.2))<1e-9)
+  b.update(.21);assert.equal(b.enemies[0].hp,991)
+  assert.equal(s.bullets,0);assert.equal(b.ammoSpent,10)
   assert.equal(s.weaponCounts.rifle,120);assert.equal(s.weaponCounts.machinegun,2)
 })
 

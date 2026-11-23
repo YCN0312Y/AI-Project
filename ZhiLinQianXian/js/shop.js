@@ -1,13 +1,16 @@
 // 商城货源独立于玩家仓库；五分钟补满，不叠加未购买的旧货。
 export const SHOP_INTERVAL=300000
+const legacyBulletLimits={rifleAmmo:100,pistolAmmo:70,sniperAmmo:20}
+const stockBetween=(amount,cap)=>Number.isFinite(amount)?Math.max(0,Math.min(cap,Math.floor(amount))):cap
 export const SHOP_LIMITS={rifle:50,pistol:30,machinegun:10,sniper:1,mortar:3,
-  rifleAmmo:100,pistolAmmo:70,sniperAmmo:20,mortarAmmo:5,grenades:50,
+  bullets:Object.values(legacyBulletLimits).reduce((sum,cap)=>sum+cap,0),mortarAmmo:5,grenades:50,
   bandages:100,medkits:20,millet:100,rice:100,corn:100,pork:30,eggs:30,salt:10,oil:10}
 export const freshShop=()=>({shopStock:{...SHOP_LIMITS},shopNextRestockAt:0,shopFoodStockVersion:3})
 export const shopSells=id=>Object.prototype.hasOwnProperty.call(SHOP_LIMITS,id)
 export function normalizeShop(raw){
-  const clean=freshShop()
-  for(const [id,cap] of Object.entries(SHOP_LIMITS))if(Number.isFinite(raw?.shopStock?.[id]))clean.shopStock[id]=Math.max(0,Math.min(cap,Math.floor(raw.shopStock[id])))
+  const clean=freshShop(),saved=raw?.shopStock
+  for(const [id,cap] of Object.entries(SHOP_LIMITS))clean.shopStock[id]=stockBetween(saved?.[id],cap)
+  if(!Number.isFinite(saved?.bullets))clean.shopStock.bullets=Object.entries(legacyBulletLimits).reduce((sum,[id,cap])=>sum+stockBetween(saved?.[id],cap),0)
   if(Number.isSafeInteger(raw?.shopNextRestockAt)&&raw.shopNextRestockAt>=0)clean.shopNextRestockAt=raw.shopNextRestockAt
   return clean
 }

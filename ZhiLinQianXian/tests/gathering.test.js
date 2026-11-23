@@ -7,7 +7,7 @@ import {occupyRegion,recallRegion,regionRecord,regionUnits} from '../js/regions.
 import {marchOrigin,startMarch} from '../js/marching.js'
 import {stationTroops,placeVillageFacility} from '../js/villages.js'
 import {startGathering,stopGathering,GATHER_INTERVAL} from '../js/gathering.js'
-import {startProduction,startBandageProduction,startTreatment,recallFacility,advanceFacilities} from '../js/facilities.js'
+import {startProduction,advanceFacilities} from '../js/facilities.js'
 import {advanceEconomy} from '../js/economy.js'
 import {autoCookMeal,serveMealNow} from '../js/logistics.js'
 import {Game} from '../js/game.js'
@@ -43,7 +43,7 @@ test('同一树林的木头和干草各自占用部队、保存和结算，结�
   let s=ready(2);assert(occupyRegion(s,forest,[1,2]).ok)
   assert(startGathering(s,forest,[1],'wood').ok);step(s,39)
   assert.equal(startGathering(s,forest,[1],'grass').ok,false)
-  assert.equal(startGathering(s,forest,[2],'wood').ok,false)
+  assert.equal(startGathering(s,forest,[1],'wood').ok,false)
   assert(startGathering(s,forest,[2],'grass').ok);step(s,15)
   const restored=normalizeSave(s);assert.deepEqual(restored,s);s=restored
   step(s,6);assert.deepEqual(s.materials,{ore:0,wood:10,grass:0})
@@ -51,6 +51,23 @@ test('同一树林的木头和干草各自占用部队、保存和结算，结�
   assert(stopGathering(s,forest,'wood'));assert.equal(formationActivity(s,1),'region');assert.equal(formationActivity(s,2),'gathering')
   assert.equal(recallRegion(s,forest,2).ok,false)
   step(s,39);assert.deepEqual(s.materials,{ore:0,wood:10,grass:10})
+})
+
+test('四种材料均可加派至五支，本轮按原人数结算，刷新后仍从下一轮计入新队伍',()=>{
+  for(const [site,material] of [[mountain,'ore'],[forest,'wood'],[forest,'grass'],[river,'fish']]){
+    let s=ready(6)
+    assert(occupyRegion(s,site,[1,2,3,4,5,6]).ok)
+    assert.equal(startGathering(s,site,[1,2,3,4,5,6],material).ok,false)
+    assert(startGathering(s,site,[1],material).ok)
+    step(s,40)
+    assert(startGathering(s,site,[2,3,4,5],material).ok)
+    assert.equal(startGathering(s,site,[6],material).ok,false)
+    assert.equal(formationActivity(s,6),'region')
+    const restored=normalizeSave(s);assert.deepEqual(restored,s);s=restored
+    assert.deepEqual(s.gatheringTasks[site][material].unitIds,[1,2,3,4,5])
+    assert.deepEqual(step(s,20).gathered,[{material,amount:10}])
+    assert.deepEqual(step(s,60).gathered,[{material,amount:50}])
+  }
 })
 
 test('苍狼峰本地待命的分出排能独自采矿，刷新后继续并在停工后回到上级所在地',()=>{
@@ -108,32 +125,30 @@ test('制造依照各游戏配方扣原料，缺料停工，补料后重新计�
 
 test('预先派驻的生产在采集材料入库后才推进，整段与逐秒推进一致',()=>{
   const s=ready();assert(occupyRegion(s,mountain,[1]).ok);assert(occupyRegion(s,forest,[2,3]).ok)
-  assert(stationTroops(s,1,[4]).ok);assert(stationTroops(s,2,[5]).ok);assert(placeVillageFacility(s,'armory',1).ok);assert(placeVillageFacility(s,'medical',2).ok)
+  assert(stationTroops(s,1,[4]).ok);assert(placeVillageFacility(s,'armory',1).ok)
   assert(startGathering(s,mountain,[1],'ore').ok);assert(startGathering(s,forest,[2],'wood').ok);assert(startGathering(s,forest,[3],'grass').ok)
-  assert(startProduction(s,[4],'rifle').ok);assert(startBandageProduction(s,[5]).ok);assert.equal(startTreatment(s,'light',[5]).ok,false)
-  assert.equal(placeVillageFacility(s,'medical',3).ok,false)
-  step(s,60);assert.equal(s.bandageTask.elapsed,0);assert.equal(s.armoryTasks.rifle.elapsed,0);assert.deepEqual(s.materials,{ore:10,wood:10,grass:10})
+  assert(startProduction(s,[4],'rifle').ok)
+  step(s,60);assert.equal(s.armoryTasks.rifle.elapsed,0);assert.deepEqual(s.materials,{ore:10,wood:10,grass:10})
   const split=normalizeSave(s);step(s,300);for(let i=0;i<300;i++)step(split,1);assert.deepEqual(s,split)
-  assert.equal(s.bandages,50);assert.equal(s.productionTotals.rifle,5);assert.deepEqual(s.materials,{ore:10,wood:35,grass:10})
-  assert(recallFacility(s,'bandages'));assert.equal(formationActivity(s,5),'garrison')
+  assert.equal(s.productionTotals.rifle,5);assert.deepEqual(s.materials,{ore:10,wood:35,grass:60})
 })
 
-test('树林采集与医疗部绷带入口可操作，成果分别出现在仓库',()=>{
-  const s=ready(3),g=Object.create(Game.prototype),labels=[]
+test('树林可从进行中的项目加派队伍，两种采集成果分别入库',()=>{
+  const s=ready(4),g=Object.create(Game.prototype),labels=[]
   Object.assign(g,{save:s,scene:'lobby',modal:null,buttons:[],persist(){},notify(){}})
   g.ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}}),fillText(value){labels.push(String(value))}},{get:(obj,key)=>obj[key]??(()=>{}),set:(obj,key,value)=>(obj[key]=value,true)})
   const draw=()=>{g.buttons=[];labels.length=0;g.drawModal();assert(g.buttons.every(b=>b.x+b.w<=1170&&b.y+b.h<=680))}
   const click=id=>{const b=g.buttons.find(b=>b.id===id);assert(b,id);b.fn()}
-  assert(occupyRegion(s,forest,[1,3]).ok);assert(stationTroops(s,2,[2]).ok);assert(placeVillageFacility(s,'medical',2).ok)
+  assert(occupyRegion(s,forest,[1,3,4]).ok)
   g.openRegion(forest);draw();click('region-gather');draw();assert(g.buttons.some(b=>b.id==='gather-material-wood'))
   click('gather-material-grass');click('facility-unit-1');draw();click('gather-start');draw()
   click('gather-material-wood');draw();assert(!g.buttons.some(b=>b.id==='facility-unit-1'));click('facility-unit-3');draw();click('gather-start');draw()
   assert(labels.includes('木头 · 已派 10 人'));assert(labels.includes('干草 · 已派 10 人'))
-  step(s,60);assert.equal(s.materials.grass,10);assert.equal(s.materials.wood,10)
+  click('gather-add');draw();click('facility-unit-4');draw();click('gather-start');draw()
+  assert(labels.includes('已派 2 / 5 支'))
+  step(s,60);assert.equal(s.materials.grass,10);assert.equal(s.materials.wood,20)
   click('gather-stop');assert(!s.gatheringTasks[forest].wood);assert(s.gatheringTasks[forest].grass)
   g.open('warehouse');draw();click('tab-materials');draw();assert(labels.includes('干草'));assert(labels.includes('木头'))
-  g.openVillage(2);draw();click('village-medical');draw();click('medical-ward-bandages');draw();click('facility-unit-2');draw();click('facility-start')
-  step(s,60);g.open('warehouse');draw();click('tab-medical');draw();assert.equal(s.bandages,10);assert(labels.includes('绷带'))
 })
 
 test('河流驻军后台捕鱼，鲜鱼刷新保留，可在后勤仓库查看并在灶房加工供餐',()=>{
@@ -160,4 +175,18 @@ test('河流驻军后台捕鱼，鲜鱼刷新保留，可在后勤仓库查看�
   assert.equal(s.fish,5);assert.equal(s.cookedFish,5);assert.deepEqual(normalizeSave(s),s)
   assert.equal(serveMealNow(s).consumed,5);assert.equal(s.cookedFish,0);assert.equal(s.fish,5)
   assert(stopGathering(s,river,'fish'));assert.equal(formationActivity(s,1),'region')
+})
+
+test('采集界面列出已派部队并可单独停止其中一支部队工作',()=>{
+  const g=Object.create(Game.prototype),labels=[]
+  const s=ready(2);Object.assign(g,{save:s,scene:'lobby',modal:null,buttons:[],persist(){},notify(){}})
+  g.ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}}),fillText(value){labels.push(String(value))}},{get:(obj,key)=>obj[key]??(()=>{}),set:(obj,key,value)=>(obj[key]=value,true)})
+  const draw=()=>{g.buttons=[];labels.length=0;g.drawModal();assert(g.buttons.every(b=>b.x+b.w<=1170&&b.y+b.h<=680))}
+  const click=id=>{const b=g.buttons.find(b=>b.id===id);assert(b,id);b.fn()}
+  assert(occupyRegion(s,forest,[1,2]).ok)
+  assert(startGathering(s,forest,[1,2],'wood').ok)
+  g.openRegion(forest);draw();click('region-gather');draw()
+  assert(g.buttons.some(b=>b.id==='gather-unit-stop-1'));assert(g.buttons.some(b=>b.id==='gather-unit-stop-2'))
+  click('gather-unit-stop-1');assert.equal(formationActivity(s,1),'region');assert.equal(formationActivity(s,2),'gathering')
+  assert.deepEqual(s.gatheringTasks[forest].wood.unitIds,[2])
 })

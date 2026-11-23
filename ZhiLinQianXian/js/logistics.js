@@ -48,7 +48,7 @@ export const freshLogistics=()=>({
 })
 export const foodStock=s=>RAW_FOODS.reduce((sum,food)=>sum+(s[food.id]||0),0)
 export const rationStock=s=>DISHES.reduce((sum,dish)=>sum+(s[dish.id]||0),0)
-export const totalPersonnel=s=>s.troops+(s.wounded?.light||0)+(s.wounded?.heavy||0)+(s.pendingBattleCasualties?.light||0)+(s.pendingBattleCasualties?.heavy||0)
+export const totalPersonnel=s=>s.troops
 export const mealCost=s=>Math.ceil(totalPersonnel(s)/RATIONS.soldiersPerPortion)
 function takeRations(s,needed){
   let used=0

@@ -49,7 +49,7 @@ test('极度饥饿仍可出征，战斗效果下降，供餐后恢复正常',()=
 })
 
 test('极度饥饿仍射击和移动，炮火已移除，供餐后恢复正常效果',()=>{
-  const s=prepared(),g=game(s);s.settings.vibration=false;g.start('campaign',1,[1]);const b=g.battle,unit=b.units[0]
+  const s=prepared(),g=game(s);s.settings.vibration=false;s.bullets=40;g.start('campaign',1,[1]);const b=g.battle,unit=b.units[0]
   b.pending=0;b.enemies=[{weapon:'rifle',troops:100,maxHp:100,hp:100,x:unit.x+100,y:unit.y,cool:0}]
   unit.groups[0].cool=0;const hp=unit.hp
   g.updateLogistics(RATIONS.interval*3);assert.equal(b.combatReady,true)

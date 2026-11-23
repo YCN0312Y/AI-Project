@@ -8,7 +8,8 @@ let audio = null
 let enabled = true    // 用户设置
 let context = 'lobby' // 当前场景
 let visible = true    // 是否在前台
-let wanted = false    // 以上三项的合取：此刻是否应该播放
+let paused = false    // 是否游戏暂停
+let wanted = false    // 以上四项的合取：此刻是否应该播放
 let playing = false
 let failed = false
 let lastTry = 0
@@ -59,7 +60,7 @@ function start() {
 }
 
 function apply() {
-  wanted = enabled && visible && (context === 'lobby'||context === 'world-map')
+  wanted = enabled && visible && !paused && (context === 'lobby'||context === 'world-map')
   if (wanted) start()
   else stop()
 }
@@ -70,6 +71,11 @@ export function initMusic(save) {
 
 export function setMusicEnabled(on) {
   enabled = !!on
+  apply()
+}
+
+export function setMusicPaused(on) {
+  paused = !!on
   apply()
 }
 

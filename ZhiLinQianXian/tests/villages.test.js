@@ -2,10 +2,10 @@ import {fitCamera} from '../js/world-map.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {freshSave,normalizeSave,setFormation,mergeFormations,unmergeFormation,removeFormation,reinforceFormation,formation,splitGarrisonUnit} from '../js/state.js'
-import {stationTroops,recallGarrison,placeVillageFacility,villageOfFormation,villageUnits} from '../js/villages.js'
+import {stationTroops,recallGarrison,placeVillageFacility,transferArmory,villageOfFormation,villageUnits} from '../js/villages.js'
 import {farmTaskAt,formationActivity,startFarming} from '../js/base.js'
 import {startTrainingTask,cancelTrainingTask,trainingTaskAt} from '../js/training.js'
-import {startProduction,startTreatment,startBandageProduction,recallFacility} from '../js/facilities.js'
+import {startProduction} from '../js/facilities.js'
 import {campaignDeployment} from '../js/campaign.js'
 import {advanceEconomy} from '../js/economy.js'
 import {Game} from '../js/game.js'
@@ -67,65 +67,63 @@ test('各村只能训练本村驻军，多村训练并行，保存恢复后完�
   assert(startTrainingTask(loaded,1,1).ok);assert(cancelTrainingTask(loaded,1));assert.equal(formationActivity(loaded,1),'garrison')
 })
 
-test('设施各一处且不能同村，生产和治疗只用本村驻军，工作期间禁止迁移或撤军',()=>{
-  const s=setup();s.cookedRice=100;stationTroops(s,1,[1]);stationTroops(s,2,[2,3]);stationTroops(s,3,[4])
-  assert(placeVillageFacility(s,'armory',1).ok);const before=structuredClone(s)
-  assert.equal(placeVillageFacility(s,'medical',1).ok,false);assert.deepEqual(s,before)
-  assert(placeVillageFacility(s,'medical',2).ok)
-  assert.equal(startProduction(s,[2],'rifle',1).ok,false);assert.equal(startTreatment(s,'light',[1],2).ok,false)
-  assert(startProduction(s,[1],'rifle',1).ok)
-  s.wounded.light=5;s.wounded.heavy=2;s.heavyTreatmentStages=[2,0,0]
-  assert(startTreatment(s,'light',[2],2).ok);assert(startTreatment(s,'heavy',[3],2).ok)
-  assert.equal(startTrainingTask(s,1,1).ok,false);assert.equal(recallGarrison(s,2,2).ok,false)
-  assert.equal(placeVillageFacility(s,'armory',3).ok,false);assert.equal(placeVillageFacility(s,'medical',3).ok,false)
-  const loaded=normalizeSave(structuredClone(s));assert.deepEqual(loaded,s)
-  advanceEconomy(loaded,300,()=>1);assert.equal(loaded.productionTotals.rifle,5);assert.equal(loaded.recoveredTroops,5)
-  assert.equal(villageOfFormation(loaded,2),2);assert.equal(formationActivity(loaded,2),'medical-light')
-  recallFacility(loaded,'rifle');assert.equal(formationActivity(loaded,1),'garrison');assert(placeVillageFacility(loaded,'armory',3).ok)
-  assert.equal(loaded.facilityVillages.armory,3);assert.equal(villageOfFormation(loaded,1),1)
-  recallFacility(loaded,'light');assert.equal(placeVillageFacility(loaded,'medical',1).ok,false) // 重伤部仍在工作
-  recallFacility(loaded,'heavy');assert(placeVillageFacility(loaded,'medical',1).ok)
+test('村庄可把正在工作的兵工厂迁到我方新村，工作部队随迁继续生产，未工作驻军留守',()=>{
+  const s=setup(),g=game(s)
+  assert(stationTroops(s,1,[1,3]).ok);assert(stationTroops(s,2,[2]).ok)
+  assert(placeVillageFacility(s,'armory',1).ok)
+  assert(startProduction(s,[1],'rifle').ok)
+  advanceEconomy(s,75)
+  const before=structuredClone(s)
+  assert.equal(transferArmory(s,3).ok,false);assert.deepEqual(s,before)
+  g.openVillage(1);draw(g);click(g,'village-transfer-armory')
+  fitCamera(g.mapCamera);g.buttons=[];g.drawWorldMap();click(g,'map-site-2')
+  g.buttons=[];g.drawWorldMap();click(g,'armory-transfer-cancel')
+  assert.equal(g.villageId,1);assert.equal(g.modal,'village');assert.deepEqual(s,before)
+  g.openVillage(2);draw(g);click(g,'village-transfer-armory')
+  g.buttons=[];g.drawWorldMap();click(g,'armory-transfer-confirm')
+  assert.equal(g.villageId,2);assert.equal(g.modal,'village')
+  assert.equal(s.facilityVillages.armory,2);assert.equal(s.armoryTasks.rifle.villageId,2);assert.equal(s.armoryTasks.rifle.elapsed,15)
+  assert.equal(villageOfFormation(s,1),2);assert.equal(formationActivity(s,1),'armory')
+  assert.equal(villageOfFormation(s,3),1);assert.equal(formationActivity(s,3),'garrison')
+  assert.deepEqual(normalizeSave(s),s)
+  advanceEconomy(s,45);assert.equal(s.productionTotals.rifle,2)
+  assert.equal(startProduction(s,[3],'rifle',2).ok,false)
+  assert(startProduction(s,[2],'rifle',2).ok)
+  advanceEconomy(s,120);assert.equal(s.productionTotals.rifle,6)
+  g.openVillage(2);draw(g);click(g,'village-armory');draw(g)
+  click(g,'facility-unit-stop-1');assert.equal(formationActivity(s,1),'garrison')
+  assert.deepEqual(s.armoryTasks.rifle.unitIds,[2])
 })
 
-test('村庄可确认拆除正在工作的设施，只结束自己的工单并保留当地人员、库存和伤员',()=>{
+test('村庄可拆除正在工作的兵工厂，取消时保留工单，确认后释放人员',()=>{
   const s=setup(),g=game(s),oldWx=globalThis.wx
   let confirmation
   globalThis.wx={showModal:options=>{confirmation=options}}
   try{
-    assert(stationTroops(s,1,[1,2]).ok);assert(stationTroops(s,2,[3,4,5]).ok)
-    assert(placeVillageFacility(s,'armory',1).ok);assert(placeVillageFacility(s,'medical',2).ok)
-    s.cookedRice=100;s.materials.grass=50;s.wounded={light:25,heavy:2};s.heavyTreatmentStages=[2,0,0]
+    assert(stationTroops(s,1,[1,2]).ok);assert(placeVillageFacility(s,'armory',1).ok)
     assert(startProduction(s,[1],'rifle').ok);assert(startProduction(s,[2],'pistol').ok)
-    assert(startTreatment(s,'light',[3]).ok);assert(startTreatment(s,'heavy',[4]).ok);assert(startBandageProduction(s,[5]).ok)
-    advanceEconomy(s,135,()=>1)
+    advanceEconomy(s,75)
     const before=structuredClone(s)
     g.openVillage(1);draw(g);click(g,'village-remove-armory')
-    assert(confirmation.title.includes('兵工厂'));confirmation.success({confirm:false});assert.deepEqual(s,before)
+    confirmation.success({confirm:false});assert.deepEqual(s,before)
     click(g,'village-remove-armory');confirmation.success({confirm:true});draw(g)
     assert.equal(s.facilityVillages.armory,null);assert.deepEqual(s.armoryTasks,{})
-    assert(g.buttons.some(button=>button.id==='village-medical'));assert(!g.buttons.some(button=>button.id==='village-remove-armory'))
-    assert.equal(formationActivity(s,1),'garrison');assert.deepEqual(s.medicalTasks,before.medicalTasks)
-    g.openVillage(2);draw(g);click(g,'village-remove-medical')
-    assert(confirmation.title.includes('医疗部'));confirmation.success({confirm:true})
-    assert.equal(s.facilityVillages.medical,null);assert.deepEqual(s.medicalTasks,{light:null,heavy:null});assert.equal(s.bandageTask,null)
-    for(const id of ['garrisons','weaponCounts','materials','productionTotals','bandages','wounded','heavyTreatmentStages','troops'])assert.deepEqual(s[id],before[id])
-    assert.equal(formationActivity(s,5),'garrison');assert.deepEqual(normalizeSave(s),s)
-    assert(placeVillageFacility(s,'armory',2).ok)
+    for(const key of ['garrisons','weaponCounts','materials','productionTotals','troops'])assert.deepEqual(s[key],before[key])
+    assert.equal(formationActivity(s,1),'garrison');assert.deepEqual(normalizeSave(s),s)
   }finally{if(oldWx===undefined)delete globalThis.wx;else globalThis.wx=oldWx}
 })
 
-test('旧设施任务首次选址带入人员和进度，库存伤员及既有训练不会丢失',()=>{
-  const s=setup();s.cookedRice=100;startProduction(s,[1],'pistol');s.wounded.light=10;startTreatment(s,'light',[2]);startTrainingTask(s,3)
-  advanceEconomy(s,3);const before=structuredClone(s)
-  assert(placeVillageFacility(s,'armory',4).ok);assert(placeVillageFacility(s,'medical',5).ok)
-  assert.equal(s.armoryTasks.pistol.elapsed,3);assert.equal(s.medicalTasks.light.elapsed,3);assert.equal(s.trainingTask.elapsed,3)
-  assert.equal(villageOfFormation(s,1),4);assert.equal(villageOfFormation(s,2),5);assert.deepEqual(s.wounded,before.wounded);assert.deepEqual(s.weaponCounts,before.weaponCounts)
-  assert.deepEqual(normalizeSave(structuredClone(s)),s)
+test('旧兵工厂首次选址保留人员、生产进度和其他训练任务',()=>{
+  const s=setup();s.cookedRice=100;assert(startProduction(s,[1],'pistol').ok);assert(startTrainingTask(s,3).ok)
+  advanceEconomy(s,3)
+  assert(placeVillageFacility(s,'armory',4).ok)
+  assert.equal(s.armoryTasks.pistol.elapsed,3);assert.equal(s.trainingTask.elapsed,3)
+  assert.equal(villageOfFormation(s,1),4);assert.deepEqual(normalizeSave(s),s)
 })
 
 test('非法驻军及冲突存档不重复占兵，非法跨村训练和设施人员不能恢复',()=>{
   const s=setup();s.garrisons={1:[1,1,999],2:[1,2]};s.facilityVillages={armory:1,medical:1}
-  const loaded=normalizeSave(s);assert.deepEqual(loaded.garrisons,{1:[1],2:[2]});assert.deepEqual(loaded.facilityVillages,{armory:1,medical:null})
+  const loaded=normalizeSave(s);assert.deepEqual(loaded.garrisons,{1:[1],2:[2]});assert.deepEqual(loaded.facilityVillages,{armory:1})
   assert(startTrainingTask(loaded,1,1).ok);const raw=structuredClone(loaded);raw.villageTrainingTasks[1].villageId=2
   assert.deepEqual(normalizeSave(raw).villageTrainingTasks,{})
   cancelTrainingTask(loaded,1);assert(startProduction(loaded,[1],'rifle',1).ok)
@@ -157,7 +155,6 @@ test('地图进入村庄可滚动选择驻军、训练与选址，关闭事务�
   click(g,'facility-unit-1');draw(g);click(g,'facility-start');assert(g.save.armoryTasks.rifle);draw(g);click(g,'base-return');assert.equal(g.modal,'village')
   draw(g);assert.equal(g.buttons.some(b=>b.id==='village-medical'),false);assert.equal(g.modal,'village')
   click(g,'village-back');assert.equal(g.modal,null);assert.equal(g.localVillage,null)
-  stationTroops(g.save,2,[3]);g.openVillage(2);draw(g);click(g,'village-medical');assert.equal(g.save.facilityVillages.medical,2);draw(g);click(g,'close');assert.equal(g.modal,'village');draw(g);assert.equal(g.buttons.some(b=>b.id==='village-armory'),false)
 })
 
 test('根据地不再提供帮助耕田、兵工厂、医疗部、训练场，地图田地仍可独立派兵',()=>{

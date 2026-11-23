@@ -8,6 +8,24 @@ import {fitCamera} from '../js/world-map.js'
 
 const roster=(count=2,troops=60)=>Array.from({length:count},(_,i)=>({id:i+1,name:`${i+1}班`,troops,groups:[{weapon:'rifle',troops,trainingBonus:0}]}))
 
+test('主动出战只扣通用子弹，最后几发按实际发数结算，打空后靠近敌军近战',()=>{
+  const s=freshSave(),g=game(s)
+  s.bullets=3;s.mortarAmmo=20;assert(setFormation(s,'squad',10).ok)
+  let stored;g.persist=()=>{stored=structuredClone(s)}
+  g.start('campaign',1,[1])
+  const b=g.battle,unit=b.units[0]
+  b.pending=0;b.enemies=[{weapon:'rifle',hp:100,maxHp:100,cool:100,x:unit.x+100,y:unit.y}]
+  g.updateBattle(.21)
+  assert.equal(s.bullets,0);assert.equal(stored.bullets,0);assert.equal(s.mortarAmmo,20)
+  assert.equal(b.enemies[0].hp,97);assert.equal(b.kills,3)
+  assert.equal(b.meleeTroops(unit),10)
+  let swung=false
+  for(let tick=0;tick<30&&!swung;tick++){
+    g.updateBattle(.05);swung=b.shots.some(shot=>!shot.hostile&&shot.kind==='melee')
+  }
+  assert(swung);assert(unit.x>340);assert.equal(s.mortarAmmo,20);assert.equal(s.weaponCounts.rifle,120)
+})
+
 test('按实际被击溃敌军逐类累计武器，跨波保留，胜利才入库且只领取一次',()=>{
   const s=freshSave();setFormation(s,'squad',10)
   const b=new CampaignBattle(7,campaignDeployment(s,[1]).units);b.pending=0
@@ -114,14 +132,36 @@ test('点选单个单位后点击地面只移动该单位，拖动事件不持�
   const before=JSON.stringify(second.target);assert.equal(b.moveSelected(NaN,0),false);assert.equal(JSON.stringify(second.target),before)
 })
 
-test('各单位从自己所在位置按武器射程、训练加成和配发占比自动开火',()=>{
-  const units=roster();units[0].groups[0].trainingBonus=.12
+test('各单位从自己所在位置按射程开火，训练加快开火而不改变每发威力',()=>{
+  const units=roster(2,10);units[0].groups[0].trainingBonus=.12
   const b=new CampaignBattle(1,units),[first,second]=b.units;b.pending=0
   first.x=200;first.y=300;first.target={x:200,y:300};second.x=1000;second.y=600;second.target={x:1000,y:600}
   b.enemies=[{x:400,y:300,hp:100,maxHp:100,cool:10}]
-  b.update(.21);assert(Math.abs(b.enemies[0].hp-(100-10*.5*1.12))<1e-9)
+  b.update(.21);assert.equal(b.enemies[0].hp,90)
+  assert(first.groups[0].cool<first.groups[0].weapon.interval)
   b.enemies[0].x=800;b.enemies[0].y=600;const hp=b.enemies[0].hp
-  b.update(.25);assert(Math.abs(b.enemies[0].hp-(hp-10*.5))<1e-9)
+  b.update(.25);assert.equal(b.enemies[0].hp,hp-10)
+})
+
+test('手枪和轻机枪两发击败一人，打掉小队后将剩余射击分配给其他目标',()=>{
+  for(const weapon of ['pistol','machinegun']){
+    const [unit]=roster(1,10);unit.groups[0].weapon=weapon
+    const stock={bullets:10},b=new CampaignBattle(1,[unit],[],stock),actor=b.units[0]
+    const enemy=(offset,troops)=>({x:actor.x+offset,y:actor.y,hp:troops,maxHp:troops,cool:100})
+    b.enemies=[enemy(50,1),enemy(100,2)]
+    b.update(.21)
+    assert.equal(b.kills,3);assert.equal(stock.bullets,4);assert.equal(b.ammoSpent,6)
+  }
+})
+
+test('狙击枪也扣通用子弹，迫击炮继续扣独立炮弹',()=>{
+  const [unit]=roster(1,10)
+  unit.groups=[{weapon:'sniper',troops:5},{weapon:'mortar',troops:5}]
+  const stock={bullets:3,mortarAmmo:8},b=new CampaignBattle(1,[unit],[],stock),actor=b.units[0]
+  b.enemies=[{x:actor.x+100,y:actor.y,hp:100,maxHp:100,cool:100}]
+  b.update(.21)
+  assert.equal(stock.bullets,0);assert.equal(stock.mortarAmmo,3);assert.equal(b.ammoSpent,8)
+  assert.equal(b.canFire(actor.groups[0]),false);assert(b.canFire(actor.groups[1]))
 })
 
 test('敌军攻击最近的存活单位，医疗和波间自动补兵已移除，退出单位不可复活',()=>{
@@ -140,7 +180,7 @@ test('新战斗可完成首关，按战后实际余员扣兵，奖励只结算�
   const deployment=campaignDeployment(s,[1]),b=new CampaignBattle(1,deployment.units)
   for(let i=0;i<60*180&&!b.done;i++)b.update(1/60)
   assert(b.done);assert(b.won);assert(b.kills>0)
-  const reward=settle(s,b);assert.equal(reward.xp,90);assert.equal(s.stage,2);assert.equal(settle(s,b),null)
+  const reward=settle(s,b);assert.equal(reward.coins,140);assert.equal(s.stage,2);assert.equal(settle(s,b),null)
   const survivors=Math.ceil(b.units[0].hp)
   assert.equal(s.troops,survivors);assert.equal(s.formations[0].troops,survivors)
   assert.equal(reward.lostTroops,120-survivors);assert.equal(reward.lostUnits,0)

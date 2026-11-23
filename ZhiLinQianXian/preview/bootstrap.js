@@ -23,7 +23,18 @@ if (demo) {
   document.title = {merge:'三合一编制演示',command:'部队指挥演示',march:'地图行军演示',start:'开局选址演示'}[demo] + ' · 指挥前线'
 }
 
-const game = new Game({applyRequestedRiceSupply:local&&!demo})
-if (demo === 'merge') game.open('formation')
-if (demo === 'command') game.open('campaign')
-if (local && params.has('debug')) window.game = game
+function startGame() {
+  const game = new Game({applyRequestedRiceSupply:local&&!demo})
+  if (demo === 'merge') game.open('formation')
+  if (demo === 'command') game.open('campaign')
+  if (local && params.has('debug')) window.game = game
+}
+
+if (location.origin === 'http://localhost:8136' && !demo) {
+  import('/preview/local-restart.js')
+    .then(({restartCurrentSave}) => restartCurrentSave(localStorage))
+    .catch(error => console.warn('本机重置未执行', error))
+    .then(startGame)
+} else {
+  startGame()
+}

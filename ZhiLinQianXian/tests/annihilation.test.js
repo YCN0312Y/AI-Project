@@ -3,9 +3,7 @@ import assert from 'node:assert/strict'
 import {freshSave,normalizeSave,setFormation,settle,applyBattleLosses,MODES} from '../js/state.js'
 import {CampaignBattle,campaignDeployment} from '../js/campaign.js'
 import {fitCamera} from '../js/world-map.js'
-import {startTreatment,recoverPendingBattleCasualties} from '../js/facilities.js'
 import {advanceEconomy} from '../js/economy.js'
-import {totalPersonnel} from '../js/logistics.js'
 import {Game} from '../js/game.js'
 
 function setup(){
@@ -15,90 +13,57 @@ function setup(){
 }
 const battle=(s,ids=[1,2])=>new CampaignBattle(1,campaignDeployment(s,ids).units)
 
-test('出战部队全灭战败全部阵亡，未参战人员和原医疗部伤员、疗程、派驻均保留',()=>{
-  const s=setup();s.wounded={light:8,heavy:4};s.heavyTreatmentStages=[2,1,1];s.battleDeaths=3
-  assert(startTreatment(s,'heavy',[3]).ok);const oldMedical=structuredClone(s.medicalTasks)
-  const b=battle(s);for(const unit of b.units)unit.hp=0
-  assert.equal(applyBattleLosses(s,b),20);assert.deepEqual(s.wounded,{light:8,heavy:4})
-  assert.equal(s.pendingBattleCasualties.annihilated,true);assert.equal(s.pendingBattleCasualties.light,0);assert.equal(s.pendingBattleCasualties.heavy,0)
-  b.done=true;const result=settle(s,b)
-  assert.equal(result.directDeaths,20);assert.equal(result.woundedLight,0);assert.equal(result.woundedHeavy,0);assert.equal(b.annihilated,true)
-  assert.equal(s.troops,100);assert.equal(s.weaponCounts.rifle,100);assert.equal(s.battleDeaths,23)
-  assert.deepEqual(s.wounded,{light:8,heavy:4});assert.deepEqual(s.heavyTreatmentStages,[2,1,1]);assert.deepEqual(s.medicalTasks,oldMedical)
-  assert.equal(s.formations.length,1);assert.equal(s.formations[0].id,3);assert.equal(s.pendingBattleCasualties,null)
-  const before=JSON.stringify(s);assert.equal(settle(s,b),null);assert.equal(applyBattleLosses(s,b,true),0);assert.equal(JSON.stringify(s),before)
+test('先后全灭的部队按实际人数累计伤亡，结算和重新加载均不重复扣减',()=>{
+  const s=setup(),b=battle(s)
+  b.units[0].hp=0;assert.equal(applyBattleLosses(s,b),10)
+  const mid=normalizeSave(JSON.parse(JSON.stringify(s)))
+  assert.equal(mid.troops,110);assert.equal(mid.weaponCounts.rifle,110)
+  b.units[1].hp=0;b.done=true
+  const result=settle(s,b)
+  assert.equal(result.lostTroops,20);assert.equal(s.troops,100);assert.equal(s.weaponCounts.rifle,100)
+  assert.deepEqual(s.formations.map(unit=>unit.id),[3])
+  assert.equal(settle(s,b),null);assert.equal(applyBattleLosses(s,b,true),0)
   assert.deepEqual(normalizeSave(s),s)
 })
 
-test('先损失一队的临时伤员不能提前治疗，最后全灭时本场全部转为阵亡',()=>{
-  const s=setup();assert(startTreatment(s,'light',[3]).ok)
-  const b=battle(s);b.units[0].hp=0;applyBattleLosses(s,b)
-  assert.equal(s.pendingBattleCasualties.light,3);assert.equal(s.pendingBattleCasualties.heavy,2)
-  assert.deepEqual(s.wounded,{light:0,heavy:0});assert.equal(totalPersonnel(s),115)
-  advanceEconomy(s,300,()=>1);assert.equal(s.recoveredTroops,0);assert.equal(s.medicalTasks.light.elapsed,0)
-  b.units[1].hp=0;applyBattleLosses(s,b);b.done=true
-  const result=settle(s,b);assert.equal(result.directDeaths,20);assert.equal(result.woundedLight+result.woundedHeavy,0)
-  assert.equal(s.recoveredTroops,0);assert.deepEqual(s.wounded,{light:0,heavy:0});assert.equal(s.troops,100)
-})
-
-test('旧伤员可在本场战斗中正常康复，全灭结算不扣回旧康复人员或旧剩余伤员',()=>{
-  const s=setup();s.wounded.light=10;startTreatment(s,'light',[3])
-  const b=battle(s);b.units[0].hp=0;applyBattleLosses(s,b)
-  advanceEconomy(s,30,()=>1);assert.equal(s.recoveredTroops,5);assert.equal(s.wounded.light,5)
-  b.units[1].hp=0;b.done=true;const result=settle(s,b)
-  assert.equal(result.directDeaths,20);assert.equal(result.woundedLight,0);assert.equal(result.woundedHeavy,0)
-  assert.equal(s.troops,105);assert.equal(s.wounded.light,5);assert.equal(s.recoveredTroops,5)
-})
-
-test('败退但仍有出战幸存者时保留正常轻重伤规则，战斗结束才送入医疗部',()=>{
-  const s=setup(),b=battle(s);b.units[0].hp=0;applyBattleLosses(s,b)
-  assert.equal(s.wounded.light,0);b.units[1].hp=6;b.done=true
-  const result=settle(s,b)
-  assert.equal(b.annihilated,false);assert.equal(result.lostTroops,14);assert.equal(result.directDeaths,7)
-  assert.equal(result.woundedLight,4);assert.equal(result.woundedHeavy,3);assert.deepEqual(s.wounded,{light:4,heavy:3})
-  assert.equal(s.troops,106);assert.equal(s.formations.find(unit=>unit.id===2).troops,6);assert.equal(s.pendingBattleCasualties,null)
-})
-
-test('胜利仍按正常战损分类送医，不因其他队伍阵亡误判全军覆灭',()=>{
-  const s=setup(),b=battle(s);b.units[0].hp=0;b.units[1].hp=4;b.done=true;b.won=true
-  const result=settle(s,b);assert.equal(result.lostTroops,16);assert.equal(result.directDeaths,8)
-  assert.equal(result.woundedLight,4);assert.equal(result.woundedHeavy,4);assert.equal(b.annihilated,false)
-})
-
-test('主营及其分遣Actor都阵亡才视为全灭，分遣存活时保留伤员',()=>{
-  for(const detachedLives of [false,true]){
-    const s=freshSave();s.troops=500;s.weaponCounts.rifle=500;setFormation(s,'battalion',400)
-    const b=battle(s,[1]);b.selectUnit(1);const detached=b.splitSelected('platoon',30).unit
-    b.units[0].hp=0;applyBattleLosses(s,b);assert.equal(s.wounded.light+s.wounded.heavy,0)
-    if(!detachedLives)detached.hp=0
-    b.done=true;const result=settle(s,b)
-    assert.equal(b.annihilated,!detachedLives)
-    assert.equal(result.directDeaths,detachedLives?185:400)
-    assert.equal(result.woundedLight+result.woundedHeavy,detachedLives?185:0)
-    assert.equal(s.troops,detachedLives?130:100);assert.deepEqual(normalizeSave(s),s)
+test('胜利、失败或撤退后只合计伤亡，幸存人员保留',()=>{
+  for(const won of [true,false]){
+    const s=setup(),b=battle(s)
+    b.units[0].hp=0;applyBattleLosses(s,b);b.units[1].hp=6;b.done=true;b.won=won
+    const result=settle(s,b)
+    assert.equal(result.lostTroops,14);assert.equal(s.troops,106)
+    assert.equal(s.formations.find(unit=>unit.id===2).troops,6)
+    for(const key of ['directDeaths','woundedLight','woundedHeavy'])assert(!Object.hasOwn(result,key))
+    const g=Object.create(Game.prototype),labels=[]
+    Object.assign(g,{save:s,battle:b,result,modal:'result',buttons:[]})
+    g.ctx=new Proxy({fillText:value=>labels.push(String(value))},{get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)})
+    g.drawModal()
+    assert(labels.includes('我方伤亡 14 人'));assert(!labels.some(label=>/阵亡|轻伤|重伤/.test(label)))
   }
 })
 
-test('战中刷新恢复待结算伤亡一次，全灭快照不产生伤员，正常快照不丢失伤员',()=>{
-  for(const annihilated of [false,true]){
-    const s=setup(),b=battle(s);b.units[0].hp=0;if(annihilated)b.units[1].hp=0
-    applyBattleLosses(s,b)
-    const loaded=normalizeSave(JSON.parse(JSON.stringify(s)));assert.deepEqual(loaded,s)
-    assert(recoverPendingBattleCasualties(loaded));assert.equal(loaded.pendingBattleCasualties,null)
-    assert.deepEqual(loaded.wounded,annihilated?{light:0,heavy:0}:{light:3,heavy:2})
-    assert.equal(loaded.battleDeaths,annihilated?20:5)
-    const once=JSON.stringify(loaded);assert.equal(recoverPendingBattleCasualties(loaded),false);assert.equal(JSON.stringify(loaded),once)
-    assert.deepEqual(normalizeSave(loaded),loaded)
-  }
+test('主营阵亡后按分遣部队的实存人数结算',()=>{
+  const s=freshSave();s.troops=500;s.weaponCounts.rifle=500;assert(setFormation(s,'battalion',400).ok)
+  const b=battle(s,[1]);b.selectUnit(1);b.splitSelected('platoon',30)
+  b.units[0].hp=0;b.done=true
+  assert.equal(settle(s,b).lostTroops,370);assert.equal(s.troops,130)
+  assert.deepEqual(normalizeSave(s),s)
 })
 
-test('非法待结算伤亡不制造伤员，人数上限计入本场临时伤员',()=>{
-  const s=setup();s.wounded.light=5
-  for(const pending of [{total:10,light:8,heavy:8,dead:0,annihilated:false},{total:10,light:-1,heavy:2,dead:9,annihilated:false},{total:10,light:3,heavy:2,dead:5,annihilated:'false'}]){
-    const loaded=normalizeSave({...s,pendingBattleCasualties:pending});assert.equal(loaded.pendingBattleCasualties,null);assert.equal(recoverPendingBattleCasualties(loaded),false);assert.equal(loaded.wounded.light,5)
-  }
-  const capped=normalizeSave({troops:9999998,pendingBattleCasualties:{total:10,light:3,heavy:2,dead:5,annihilated:false}})
-  assert.equal(totalPersonnel(capped),10000000);recoverPendingBattleCasualties(capped);assert.equal(totalPersonnel(capped),10000000)
+test('旧医疗数据加载后释放派驻人员，已经扣除的伤亡不会改变现有兵力',()=>{
+  const raw=setup()
+  raw.troops=110;raw.wounded={light:8,heavy:4};raw.heavyTreatmentStages=[2,1,1]
+  raw.pendingBattleCasualties={total:10,light:3,heavy:2,dead:5,annihilated:false}
+  raw.facilityVillages.medical=2;raw.garrisons[2]=[3]
+  raw.medicalTasks={light:{unitIds:[3],elapsed:15,workers:10}};raw.bandageTask={unitIds:[3]}
+  raw.raidReports=[{id:1,siteId:2,force:12,outcome:'won',lostTroops:6,directDeaths:3,woundedLight:2,woundedHeavy:1,expiresAt:Date.now()+10000}]
+  const restored=normalizeSave(raw)
+  for(const key of ['wounded','medicalTasks','heavyTreatmentStages','bandageTask','pendingBattleCasualties'])assert(!Object.hasOwn(restored,key))
+  assert.deepEqual(restored.facilityVillages,{armory:null})
+  assert.equal(restored.raidReports[0].lostTroops,6);assert(!Object.hasOwn(restored.raidReports[0],'woundedLight'))
+  assert(campaignDeployment(restored,[3],true).ok)
+  advanceEconomy(restored,60,()=>1)
+  assert.equal(restored.troops,110);assert.deepEqual(restored.garrisons[2],[3])
 })
 
 test('主页直接绘制大地图，三张大卡移除，常用入口保留且不改存档',()=>{

@@ -94,6 +94,16 @@ export function cancelTrainingTask(save,villageId=null){
   const task=trainingTaskAt(save,villageId);if(!task)return false
   task.settled=true;if(villageId!==null)delete save.villageTrainingTasks[villageId];else save.trainingTask=null;return true
 }
+export function reconcileVillageTraining(save,villageId){
+  const session=trainingTaskAt(save,villageId)
+  if(!session)return
+  const survivors=formationRoots(save).find(unit=>unit.id===session.unitId)
+  if(!survivors){cancelTrainingTask(save,villageId);return}
+  session.troops=survivors.troops
+  session.soldiers=leavesOf(save,survivors.id).map(unit=>({id:unit.id,troops:unit.troops}))
+  session.duration=trainingDuration(survivors.troops)
+  session.elapsed=Math.min(session.elapsed,session.duration)
+}
 export function advanceTrainingTask(save,seconds,canTrain=!hungerStatus(save).disabled,villageId=null){
   const session=trainingTaskAt(save,villageId)
   if(!session||!Number.isFinite(seconds)||seconds<0)return null

@@ -4,6 +4,7 @@ import {villageOfFormation,unitVillage,villageLocalUnits,villageControlled} from
 import {validateAllocations} from './workforce.js'
 import {takeVillageRecruits} from './population.js'
 import {gatheringEntries} from './gathering.js'
+import {baseForces} from './state.js'
 import {attachFarmTravel,farmRouteLength,farmTravelPosition,restoreFarmTravel,FARM_TRAVEL_SPEED} from './farm-travel.js'
 export const FIELD_COOLDOWN=300
 export const FARM={duration:60,minWorkers:1,maxWorkers:100,grainPerWorker:3}
@@ -26,7 +27,7 @@ export function clearFarmTask(s,fieldId){
   else s.farmTask=null
 }
 const activities=new WeakMap()
-export const activeFormationIds=s=>[...(activities.get(s)?.keys()||[])]
+export const activeFormationIds=(s,kind)=>Array.from(activities.get(s)||[]).filter(([,activity])=>kind===undefined||activity===kind).map(([id])=>id)
 function family(s,id){
   const result=new Set(),visit=key=>{if(result.has(key))return;const unit=s.formations.find(unit=>unit.id===key);if(!unit)return;result.add(key);for(const child of unit.children||[])visit(child)}
   visit(id);return result
@@ -38,15 +39,13 @@ export function formationActivity(s,id,ignoreGarrison=false){
   if(farmTasks(s).some(task=>task.unitIds?.some(overlaps)))return 'farm'
   for(const [,task] of gatheringEntries(s))if(task.unitIds.some(overlaps))return 'gathering'
   if(Object.values(s.armoryTasks||{}).some(task=>task.unitIds.some(overlaps)))return 'armory'
-  if((s.bandageTask?.unitIds||[]).some(overlaps))return 'bandages'
-  for(const ward of ['light','heavy'])if((s.medicalTasks?.[ward]?.unitIds||[]).some(overlaps))return 'medical-'+ward
   if(s.trainingTask&&!s.trainingTask.settled&&overlaps(s.trainingTask.unitId))return 'training'
   if(Object.values(s.villageTrainingTasks||{}).some(task=>task&&!task.settled&&overlaps(task.unitId)))return 'training'
   if(!ignoreGarrison&&villageOfFormation(s,id)!==null)return 'garrison'
   if(!ignoreGarrison&&Object.values(s.mapRegions||{}).some(record=>(record.garrisonIds||[]).some(overlaps)))return 'region'
   return null
 }
-export const activityLabel=kind=>({march:'行军中',region:'地区驻防中',garrison:'驻村保护中',farm:'耕作中',gathering:'采集中',battle:'出战中',training:'训练中',armory:'军械生产中',bandages:'制作绷带中','medical-light':'轻伤部工作中','medical-heavy':'重伤部工作中'}[kind]||'空闲')
+export const activityLabel=kind=>({march:'行军中',region:'地区驻防中',garrison:'驻村保护中',farm:'耕作中',gathering:'采集中',battle:'出战中',training:'训练中',armory:'军械生产中'}[kind]||'空闲')
 export function assignFormations(s,ids,kind,ignoreGarrison=false,allowedActivities=[]){
   if(!['battle','training'].includes(kind)||!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)return false
   const children=new Set(s.formations.flatMap(unit=>unit.children||[]))
@@ -59,6 +58,11 @@ export function assignFormations(s,ids,kind,ignoreGarrison=false,allowedActiviti
 }
 export function releaseFormations(s,kind){const map=activities.get(s);if(map)for(const [id,value] of map)if(value===kind)map.delete(id)}
 const reserve=s=>s.troops-s.formations.filter(unit=>!unit.children).reduce((sum,unit)=>sum+unit.troops,0)
+export const farmReserveAvailable=s=>Math.max(0,Math.min(FARM.maxWorkers,reserve(s)-farmReserveWorkers(s)))
+export function farmLocalUnits(s,villageId){
+  const stationed=villageLocalUnits(s,villageId)
+  return s.baseVillageId===villageId?[...stationed,...baseForces(s).units]:stationed
+}
 export function normalizeBase(s,raw){
   Object.assign(s,freshBase())
   for(const key of ['farmHarvested','helpedHarvests','mobilizationDiscounts'])if(Number.isFinite(raw?.[key]))s[key]=Math.max(0,Math.min(10000000,Math.floor(raw[key])))
@@ -78,11 +82,14 @@ function restoreFarmTask(s,t){
     const allocation=t.allocations!==undefined&&t.type==='help'&&field?.crop===t.crop?validateAllocations(s,field.villageId,t.allocations,ids):null
     if(t.allocations!==undefined&&(!allocation?.ok||allocation.workers!==t.workers))return null
     const grouped=allocation?.ok||Array.isArray(ids)&&ids.length>0&&new Set(ids).size===ids.length&&ids.every(id=>s.formations.some(unit=>unit.id===id)&&!children.has(id)&&!formationActivity(s,id,true))&&ids.reduce((sum,id)=>sum+s.formations.find(unit=>unit.id===id).troops,0)===t.workers
-    const local=grouped&&field&&ids.some(id=>unitVillage(s,id)===field.villageId)
-    if(grouped||(!ids&&t.workers<=Math.min(FARM.maxWorkers,reserve(s)))){
+    const matchingField=t.type==='help'&&field?.crop===t.crop
+    const homeField=matchingField&&field.villageId===s.baseVillageId
+    const previouslyDispatched=matchingField&&t.villageId===field.villageId
+    const local=homeField||previouslyDispatched||grouped&&field&&ids.some(id=>unitVillage(s,id)===field.villageId)
+    if(grouped||(!ids&&(!matchingField||local)&&t.workers<=farmReserveAvailable(s))){
       const task={type:t.type,workers:t.workers,crop:t.crop,elapsed:t.elapsed,...(grouped?{unitIds:[...ids]}:{}),...(t.type==='help'&&field?.crop===t.crop?{fieldId:field.id}:{}),...(local?{villageId:field.villageId}:{}),...(allocation?.ok?{allocations:allocation.allocations}:{})}
       if(restoreFarmTravel(task,t)){
-        if(!t.phase&&task.type==='help'&&local&&ids.every(id=>unitVillage(s,id)===field.villageId)){attachFarmTravel(task);task.phase='working';task.travelled=farmRouteLength(task)}
+        if(!t.phase&&task.type==='help'&&local&&(homeField||previouslyDispatched||ids.every(id=>unitVillage(s,id)===field.villageId))){attachFarmTravel(task);task.phase='working';task.travelled=farmRouteLength(task)}
         return task
       }
     }
@@ -96,8 +103,13 @@ export function startFarming(s,type,workers,crop='millet',unitIds=null,fieldId=n
     const wait=fieldCooldown(s,fieldId);if(wait>0)return {ok:false,message:'田地刚完成耕作，还需休耕 '+Math.ceil(wait)+' 秒才能再耕'}}
   let allocation=null;const field=mapField(fieldId)
   if(field){
-    const localIds=new Set(villageLocalUnits(s,field.villageId).map(unit=>unit.id))
-    if(!villageControlled(s,field.villageId)||!Array.isArray(unitIds)||!unitIds.length||unitIds.some(id=>!localIds.has(id)))return {ok:false,message:'只有本村驻军和留在本村的分队可以帮助耕田'}
+    if(!villageControlled(s,field.villageId))return {ok:false,message:'请先控制这座村庄，再安排代耕'}
+    if(unitIds===null){
+      if(s.baseVillageId!==field.villageId)return {ok:false,message:'未编人员只能在根据地中心的田地代耕'}
+    }else{
+      const localIds=new Set(farmLocalUnits(s,field.villageId).map(unit=>unit.id))
+      if(!Array.isArray(unitIds)||!unitIds.length||unitIds.some(id=>!localIds.has(id)))return {ok:false,message:'请选择留在本地的部队代耕'}
+    }
   }
   if(allocations!==null){
     allocation=type==='help'&&field?validateAllocations(s,field.villageId,allocations,unitIds):null
@@ -111,12 +123,12 @@ export function startFarming(s,type,workers,crop='millet',unitIds=null,fieldId=n
     workers=unitIds.reduce((sum,id)=>sum+s.formations.find(unit=>unit.id===id).troops,0)
   }else{
     if(!Number.isInteger(workers)||workers<1||workers>FARM.maxWorkers)return {ok:false,message:'耕作人数须为 1—100 的整数'}
-    if(workers>reserve(s))return {ok:false,message:`未编人员不足，当前可派 ${Math.max(0,reserve(s))} 人`}
+    const available=farmReserveAvailable(s)
+    if(workers>available)return {ok:false,message:`未编人员不足，当前可派 ${available} 人`}
   }
   if(hungerStatus(s).disabled)return {ok:false,message:'部队极度饥饿，请先到灶房供餐再耕作'}
-  const local=field&&unitIds?.some(id=>unitVillage(s,id)===field.villageId)
-  const task={type,workers,crop,elapsed:0,...(unitIds?{unitIds:[...unitIds]}:{}),...(fieldId?{fieldId}:{}),...(local?{villageId:field.villageId}:{}),...(allocation?{allocations:allocation.allocations}:{})}
-  if(type==='help'&&local&&unitIds.every(id=>unitVillage(s,id)===field.villageId))attachFarmTravel(task)
+  const task={type,workers,crop,elapsed:0,...(unitIds?{unitIds:[...unitIds]}:{}),...(field?{fieldId:field.id,villageId:field.villageId}:{}),...(allocation?{allocations:allocation.allocations}:{})}
+  if(field)attachFarmTravel(task)
   saveFarmTask(s,task)
   return {ok:true}
 }

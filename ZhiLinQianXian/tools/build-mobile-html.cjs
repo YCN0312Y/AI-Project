@@ -37,9 +37,19 @@ function transform(file, code) {
   const exported = [];
   out = out.replace(/(^|[;\n])\s*export\s+const\s+(\w+)\s*=/g, (_, p, n) => { exported.push(n); return `${p}const ${n} =`; });
   out = out.replace(/(^|[;\n])\s*export\s+let\s+(\w+)\s*=/g, (_, p, n) => { exported.push(n); return `${p}let ${n} =`; });
-  out = out.replace(/(^|[;\n])\s*export\s+function\s+(\w+)/g, (_, p, n) => { exported.push(n); return `${p}function ${n}`; });
+  out = out.replace(/(^|[;\n])\s*export\s+function(\*?)\s+(\w+)/g, (_, p, star, n) => { exported.push(n); return `${p}function${star} ${n}`; });
   out = out.replace(/(^|[;\n])\s*export\s+class\s+(\w+)/g, (_, p, n) => { exported.push(n); return `${p}class ${n}`; });
-  if (exported.length) out += '\n' + exported.map(n => `__exp.${n}=${n};`).join('');
+  out = out.replace(/(^|[;\n])\s*export\s*\{([^}]+)\}\s*;?/g, (_, p, list) => {
+    for (const item of list.split(',').map(s => s.trim()).filter(Boolean)) {
+      const parts = item.split(/\s+as\s+/);
+      exported.push(parts.length === 2 ? `${parts[1].trim()}:${parts[0].trim()}` : parts[0].trim());
+    }
+    return p;
+  });
+  if (exported.length) out += '\n' + exported.map(e => {
+    const [k, v] = e.includes(':') ? e.split(':') : [e, e];
+    return `__exp.${k}=${v};`;
+  }).join('');
   return out;
 }
 

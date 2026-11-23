@@ -1,22 +1,28 @@
 import {ALL_VILLAGES,MAP_REGIONS,OCCUPIABLE_SITES,mapRegion} from './world-map.js'
-import {CampaignBattle,campaignDeployment} from './campaign.js'
-import {formationRoots,formationName,settle,syncIdleBranches} from './state.js'
-import {hungerStatus} from './logistics.js'
+import {CampaignBattle} from './campaign.js'
+import {formationRoots,formationName,FORMATION_TYPES,settle,syncIdleBranches} from './state.js'
+import {hungerStatus,RECRUITMENT} from './logistics.js'
 import {WEAPONS} from './weapons.js'
 import {assignFormations,formationActivity} from './base.js'
 import {villageLocalUnits,evacuateVillage} from './villages.js'
 import {availableWorkforce} from './workforce.js'
-import {cancelTrainingTask,trainedCombatGroups,trainingTaskAt} from './training.js'
+import {reconcileVillageTraining,trainedCombatGroups} from './training.js'
 import {marchRoute,marchPosition,routeLength} from './marching.js'
-import {regionRecord,survivingEnemyUnits} from './regions.js'
+import {regionLocalUnits,regionRecord,survivingEnemyUnits} from './regions.js'
+import {reconcileGathering} from './gathering.js'
 
 export const RAID_INTERVAL=300
 export const RAID_RESPONSE_WINDOW=20
 export const RAID_TRAVEL_SECONDS=12
 export const RAID_ALERT_LIMIT=3
 const RAID_REPORT_MS=10000
-const RAID_FORCE_LIMIT=120
-const villageDefenseDuties=['farm','armory','bandages','medical-light','medical-heavy','training']
+const MIN_RAID_INTERVAL=60
+const RAID_ENEMY_DAMAGE=2.4
+const RAID_ENEMY_INTERVAL=.45
+const RAID_ENEMY_GROUP_LIMIT=8
+const villageDefenseDuties=['farm','armory','training']
+const regionDefenseDuties=['gathering']
+const defenseDuties=site=>site.type==='village'?villageDefenseDuties:regionDefenseDuties
 export const freshRaids=()=>({raidElapsed:0,raidSerial:0,raidAlerts:[],raidReports:[]})
 const raidSites=[...ALL_VILLAGES,...MAP_REGIONS.filter(site=>!site.villageId)]
 const sitesById=new Map(raidSites.map(site=>[site.id,site]))
@@ -45,26 +51,26 @@ export function raidMarch(alert){
 }
 export const raidOutcomeLabel={won:'已击退敌袭',lost:'防守失败',undefended:'无可应敌驻军'}
 export const raidReportStatus=report=>report.occupied?'失守 · 敌军占领':raidOutcomeLabel[report.outcome]
-const validRaid=raid=>raid&&Number.isSafeInteger(raid.id)&&raid.id>=1&&raidSite(raid.siteId)&&Number.isInteger(raid.force)&&raid.force>=1&&raid.force<=RAID_FORCE_LIMIT
+const validRaid=raid=>raid&&Number.isSafeInteger(raid.id)&&raid.id>=1&&raidSite(raid.siteId)&&Number.isInteger(raid.force)&&raid.force>=1&&raid.force<=RECRUITMENT.troopLimit
 const reportCount=value=>Number.isSafeInteger(value)&&value>0?value:0
 const reportVisible=(report,now)=>Number.isSafeInteger(report.expiresAt)&&report.expiresAt>now
 function raidReport(alert,outcome,result={}){
   const {id,siteId,force}=alert
-  const counts=['kills','lostTroops','directDeaths','woundedLight','woundedHeavy','coins','xp']
+  const counts=['kills','lostTroops','coins']
   const capturedWeapons=Object.fromEntries(WEAPONS.map(weapon=>[weapon.id,reportCount(result.capturedWeapons?.[weapon.id])]))
   const deploymentCounts=Number.isSafeInteger(result.deployedTroops)?{deployedTroops:reportCount(result.deployedTroops),unarmedTroops:reportCount(result.unarmedTroops)}:{}
   const origin=raidOrigin(alert)
   const occupation=outcome!=='won'&&result.occupied===true?{occupied:true,enemyTroops:reportCount(result.enemyTroops)}:{}
   return {id,siteId,force,outcome,expiresAt:result.expiresAt,...(origin?{originId:origin.id}:{}),...deploymentCounts,...occupation,...Object.fromEntries(counts.map(key=>[key,reportCount(result[key])])),capturedWeapons}
 }
-const raidGarrison=(s,site)=>{
+const raidLocalUnits=(s,site)=>{
   if(!site||site.type==='village'&&site.id===s.baseVillageId)return []
   if(site.type==='village'){
-    if(s.mapRegions[site.regionId||site.id]?.enemies.length)return []
-    return s.garrisons[site.id]||[]
+    if(s.mapRegions[site.regionId||site.id]?.enemies.length||!s.garrisons[site.id]?.length)return []
+    return villageLocalUnits(s,site.id)
   }
   const record=s.mapRegions[site.id]
-  return record&&!record.enemies.length?record.garrisonIds:[]
+  return record&&!record.enemies.length?regionLocalUnits(s,site.id):[]
 }
 export function normalizeRaids(s,raw){
   Object.assign(s,freshRaids())
@@ -73,7 +79,7 @@ export function normalizeRaids(s,raw){
   const ids=new Set(),locations=new Set()
   for(const alert of Array.isArray(raw?.raidAlerts)?raw.raidAlerts:[]){
     if(s.raidAlerts.length>=RAID_ALERT_LIMIT)break
-    if(!validRaid(alert)||ids.has(alert.id)||locations.has(alert.siteId)||!raidGarrison(s,raidSite(alert.siteId)).length)continue
+    if(!validRaid(alert)||ids.has(alert.id)||locations.has(alert.siteId)||!raidLocalUnits(s,raidSite(alert.siteId)).length)continue
     const responseSeconds=Number.isFinite(alert.responseSeconds)?Math.max(0,Math.min(RAID_RESPONSE_WINDOW,alert.responseSeconds)):RAID_RESPONSE_WINDOW
     const target=raidSite(alert.siteId),savedOrigin=raidOrigin(alert)
     const origin=savedOrigin&&savedOrigin.id!==(target.regionId||target.id)?savedOrigin:resolveRaidOrigin(s,target)
@@ -100,46 +106,50 @@ export function advanceRaids(s,seconds,random=Math.random,manualRaidId=null){
   if(!Number.isFinite(seconds)||seconds<=0)return result
   for(const alert of [...s.raidAlerts]){
     if(alert.id===manualRaidId)continue
-    if(!raidGarrison(s,raidSite(alert.siteId)).length){
+    if(!raidLocalUnits(s,raidSite(alert.siteId)).length){
       s.raidAlerts=s.raidAlerts.filter(entry=>entry.id!==alert.id);result.changed=true;continue
     }
     alert.responseSeconds=Math.max(0,alert.responseSeconds-seconds)
     if(alert.responseSeconds<=1e-8)result.due.push(alert.id)
   }
   if(s.raidAlerts.length>=RAID_ALERT_LIMIT)return result
-  if(!Object.values(s.garrisons).some(ids=>ids.length)&&!Object.values(s.mapRegions).some(record=>record.garrisonIds.length)){
-    s.raidElapsed=0;return result
-  }
-  s.raidElapsed=Math.min(RAID_INTERVAL,s.raidElapsed+seconds)
-  if(s.raidElapsed<RAID_INTERVAL)return result
-  const occupied=new Set(s.raidAlerts.map(alert=>alert.siteId)),roots=new Map(formationRoots(s).map(unit=>[unit.id,unit]))
-  const targets=raidSites.filter(site=>!occupied.has(site.id)&&raidGarrison(s,site).some(id=>roots.has(id)))
+  const splitLocations=new Set(s.formations.map(unit=>unit.splitOrigin))
+  const garrisonedSites=raidSites.filter(site=>{
+    const record=s.mapRegions[site.regionId||site.id]
+    if(record?.enemies.length)return false
+    return site.type==='village'?site.id!==s.baseVillageId&&s.garrisons[site.id]?.length:record?.garrisonIds.length||splitLocations.has(site.id)
+  })
+  if(!garrisonedSites.length){s.raidElapsed=0;return result}
+  const interval=Math.max(MIN_RAID_INTERVAL,Math.round(RAID_INTERVAL/(1+(garrisonedSites.length-1)*.25)))
+  s.raidElapsed=Math.min(interval,s.raidElapsed+seconds)
+  if(s.raidElapsed<interval)return result
+  const occupied=new Set(s.raidAlerts.map(alert=>alert.siteId))
+  const targets=garrisonedSites.filter(site=>!occupied.has(site.id))
   if(!targets.length){s.raidElapsed=0;return result}
   const target=targets[Math.min(targets.length-1,Math.floor(random()*targets.length))]
   const origin=resolveRaidOrigin(s,target)
   if(!origin){s.raidElapsed=0;return result}
-  const defenders=raidGarrison(s,target).reduce((total,id)=>total+(roots.get(id)?.troops||0),0)
-  result.alert={id:++s.raidSerial,siteId:target.id,originId:origin.id,force:Math.max(4,Math.min(RAID_FORCE_LIMIT,Math.round(defenders*.65))),responseSeconds:RAID_RESPONSE_WINDOW}
+  const defenders=raidLocalUnits(s,target).reduce((total,unit)=>total+unit.troops,0)
+  if(!defenders){s.raidElapsed=0;return result}
+  const force=Math.max(1,Math.min(RECRUITMENT.troopLimit,Math.round(defenders*(.9+.2*random()))))
+  result.alert={id:++s.raidSerial,siteId:target.id,originId:origin.id,force,responseSeconds:RAID_RESPONSE_WINDOW}
   s.raidElapsed=0;s.raidAlerts.push(result.alert);result.changed=true
   return result
 }
 export function raidDeployment(s,id){
   const alert=s.raidAlerts.find(alert=>alert.id===id),site=raidSite(alert?.siteId)
   if(!site)return {ok:false,message:'这条驻地警报已处理'}
-  const village=site.type==='village'
-  const units=village&&raidGarrison(s,site).length?villageDefenders(s,site.id):raidGarrison(s,site).flatMap(id=>{
-    const result=campaignDeployment(s,[id],true)
-    return result.ok?result.units:[]
-  })
+  const units=raidDefenders(s,site)
   const troops=units.reduce((total,unit)=>total+unit.troops,0)
   const unarmedTroops=units.reduce((total,unit)=>total+(unit.groups.find(group=>group.weapon===null)?.troops||0),0)
-  return {ok:!!units.length,site,alert,units,troops,unarmedTroops,message:village?'暂无可出战的本村士兵':'暂无空闲且配齐武器的驻军'}
+  return {ok:!!units.length,site,alert,units,troops,unarmedTroops,message:'驻地暂无可出战人员'}
 }
-function villageDefenders(s,villageId){
+function raidDefenders(s,site){
   const units=[]
-  for(const unit of villageLocalUnits(s,villageId)){
+  const allowed=defenseDuties(site)
+  for(const unit of raidLocalUnits(s,site)){
     const activity=formationActivity(s,unit.id,true)
-    if(activity&&!villageDefenseDuties.includes(activity))continue
+    if(activity&&!allowed.includes(activity))continue
     const troops=availableWorkforce(s,unit.id,true)
     if(!troops)continue
     const groups=[]
@@ -154,27 +164,25 @@ function villageDefenders(s,villageId){
   }
   return units
 }
-function interruptRaidTraining(s,deployment){
-  if(deployment.site.type!=='village')return
-  const villageId=deployment.site.id,training=trainingTaskAt(s,villageId)
-  if(training&&deployment.units.some(unit=>unit.id===training.unitId))cancelTrainingTask(s,villageId)
-}
 export function assignRaidDefenders(s,deployment){
-  const allowed=deployment.site.type==='village'?villageDefenseDuties:[]
-  if(!assignFormations(s,deployment.units.map(unit=>unit.id),'battle',true,allowed))return false
-  interruptRaidTraining(s,deployment)
-  return true
+  return assignFormations(s,deployment.units.map(unit=>unit.id),'battle',true,defenseDuties(deployment.site))
 }
 function raidEnemyUnits(alert){
-  const count=Math.ceil(alert.force/30)
+  const count=Math.min(RAID_ENEMY_GROUP_LIMIT,Math.ceil(alert.force/30))
   return Array.from({length:count},(_,i)=>{
     const troops=Math.floor(alert.force/count)+(i<alert.force%count?1:0)
-    return {name:`来袭敌${i+1}队`,troops,type:troops<=12?'squad':'platoon',weapon:'rifle'}
+    const type=FORMATION_TYPES.find(kind=>troops<=kind.max)?.id||'army'
+    return {name:`来袭敌${i+1}队`,troops,type,weapon:'rifle'}
   })
 }
-export function makeRaidBattle(deployment){
-  const {alert,site,units}=deployment
-  const battle=new CampaignBattle(1,units,raidEnemyUnits(alert))
+export function makeRaidBattle(deployment,ammoStock=null){
+  const {alert,site,units,troops}=deployment
+  const battle=new CampaignBattle(1,units,raidEnemyUnits(alert),ammoStock)
+  // 兵力接近时来敌施加更大压力。人数差距越大，额外强度越低。
+  const pressure=Math.min(1,alert.force/(Math.max(1,troops)*.9))**2
+  battle.enemyDamageMultiplier=1+(RAID_ENEMY_DAMAGE-1)*pressure
+  battle.enemyIntervalMultiplier=1+(RAID_ENEMY_INTERVAL-1)*pressure
+  battle.enemyLargeUnitDamage=.035
   battle.raidId=alert.id;battle.raidSiteId=site.id;battle.regionName=site.name
   return battle
 }
@@ -183,8 +191,7 @@ export function resolveRaidAutomatically(battle){
   for(let tick=0;tick<limit&&!battle.done;tick++){
     for(const unit of battle.units){
       if(unit.hp<=0)continue
-      const range=Math.max(0,...unit.groups.map(group=>group.weapon?.range||0))
-      if(!range)continue
+      const range=battle.attackRange(unit)
       let target=null,distance=Infinity
       for(const enemy of battle.enemies){
         const gap=Math.hypot(enemy.x-unit.x,enemy.y-unit.y)
@@ -222,18 +229,13 @@ export function autoDefendRaid(s,id){
   const deploymentCounts={deployedTroops:deployment.troops,unarmedTroops:deployment.unarmedTroops}
   let report
   if(deployment.ok){
-    const battle=makeRaidBattle(deployment)
+    const battle=makeRaidBattle(deployment,s)
     const hunger=hungerStatus(s)
     for(const key of ['damageMultiplier','intervalMultiplier','speedMultiplier'])battle[key]=hunger[key]
     resolveRaidAutomatically(battle)
-    // 自动应敌一次结算完毕，保留玩家正在指挥的另一场战斗的伤亡记录。
-    const pending=s.pendingBattleCasualties
-    try{
-      interruptRaidTraining(s,deployment)
-      const result=settle(s,battle)
-      const occupation=finishRaid(s,battle)
-      report=raidReport(deployment.alert,battle.won?'won':'lost',{...result,...deploymentCounts,...occupation})
-    }finally{s.pendingBattleCasualties=pending}
+    const result=settle(s,battle)
+    const occupation=finishRaid(s,battle)
+    report=raidReport(deployment.alert,battle.won?'won':'lost',{...result,...deploymentCounts,...occupation})
   }else{
     s.raidAlerts=s.raidAlerts.filter(alert=>alert.id!==id)
     const occupation=captureRaidSite(s,deployment.site,raidEnemyUnits(deployment.alert))
@@ -252,11 +254,25 @@ export function finishRaid(s,battle){
     if(occupation.occupied)return occupation
   }
   const alive=new Set(formationRoots(s).map(unit=>unit.id))
+  const fought=unit=>battle.units.some(actor=>actor.rootId===unit.id&&actor.hp>0)
   if(site.type==='village'){
     const survivors=(s.garrisons[site.id]||[]).filter(id=>alive.has(id))
+    if(battle.won&&!survivors.length){
+      const survivor=villageLocalUnits(s,site.id).find(fought)
+      if(survivor){survivors.push(survivor.id);delete survivor.splitOrigin}
+    }
     if(survivors.length)s.garrisons[site.id]=survivors
     else delete s.garrisons[site.id]
-  }else s.mapRegions[site.id].garrisonIds=s.mapRegions[site.id].garrisonIds.filter(id=>alive.has(id))
+    reconcileVillageTraining(s,site.id)
+  }else{
+    const record=s.mapRegions[site.id]
+    record.garrisonIds=record.garrisonIds.filter(id=>alive.has(id))
+    if(battle.won&&!record.garrisonIds.length){
+      const survivor=regionLocalUnits(s,site.id).find(fought)
+      if(survivor){record.garrisonIds.push(survivor.id);delete survivor.splitOrigin}
+    }
+    reconcileGathering(s,site.id)
+  }
   syncIdleBranches(s)
   return {occupied:false}
 }
