@@ -1,0 +1,11 @@
+{
+  "name": "指挥前线",
+  "short_name": "指挥前线",
+  "lang": "zh-CN",
+  "start_url": "../",
+  "scope": "../",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#18231e",
+  "theme_color": "#18231e"
+}

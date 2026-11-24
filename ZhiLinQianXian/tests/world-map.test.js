@@ -296,10 +296,15 @@ test('绘制全屏地图与部署遮罩不触发战斗渲染；浏览地图期�
 })
 
 test('浏览器适配层同时保留双指，抬手和取消分开派发，滚轮仅在被处理时拦截',()=>{
-  const events={},documentEvents={},windowEvents={},canvas={addEventListener:(k,fn)=>events[k]=fn,setPointerCapture(){}}
-  const sandbox={window:{addEventListener:(k,fn)=>windowEvents[k]=fn},document:{createElement:()=>canvas,body:{prepend(){}},addEventListener:(k,fn)=>documentEvents[k]=fn}}
+  const events={},documentEvents={},windowEvents={},probe={style:{}}
+  const canvas={addEventListener:(k,fn)=>events[k]=fn,setPointerCapture(){},getBoundingClientRect:()=>({width:896,height:300})}
+  const sandbox={devicePixelRatio:2,getComputedStyle:()=>({paddingLeft:'44px',paddingRight:'32px',paddingTop:'0px',paddingBottom:'12px'}),
+    window:{addEventListener:(k,fn)=>windowEvents[k]=fn},
+    document:{createElement:tag=>tag==='canvas'?canvas:probe,body:{prepend(){},append(){}},addEventListener:(k,fn)=>documentEvents[k]=fn}}
   vm.runInNewContext(readFileSync(new URL('../preview/wx-shim.js',import.meta.url),'utf8'),sandbox)
   const wx=sandbox.window.wx,seen=[];wx.createCanvas()
+  const {windowWidth,windowHeight,safeArea}=wx.getWindowInfo()
+  assert.deepEqual([windowWidth,windowHeight,safeArea.left,safeArea.top,safeArea.right,safeArea.bottom],[896,300,44,0,864,288])
   for(const [method,name] of [['onTouchStart','start'],['onTouchMove','move'],['onTouchEnd','end'],['onTouchCancel','cancel']])wx[method](e=>seen.push({name,count:e.touches.length,changed:e.changedTouches[0]?.identifier}))
   const p=id=>({pointerId:id,pointerType:'touch',clientX:id*10,clientY:300})
   events.pointerdown(p(1));events.pointerdown(p(2));events.pointermove(p(2));events.pointerup(p(2));events.lostpointercapture(p(2))

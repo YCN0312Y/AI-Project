@@ -74,24 +74,32 @@ export const mapMarkerScale=camera=>camera.zoom/REGION_ZOOM
 export const MIN_ZOOM=Math.min(MAP_VIEW.w/MAP_SIZE.w,MAP_VIEW.h/MAP_SIZE.h)
 export const MAX_ZOOM=2
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n))
+const cameraView=camera=>camera.view||MAP_VIEW
+const fitZoom=view=>Math.min(view.w/MAP_SIZE.w,view.h/MAP_SIZE.h)
+function viewCenter(camera){
+  const view=cameraView(camera)
+  return {x:view.x+view.w/2,y:view.y+view.h/2}
+}
 export function constrainCamera(camera){
-  camera.zoom=clamp(camera.zoom,MIN_ZOOM,MAX_ZOOM)
+  const view=cameraView(camera)
+  camera.zoom=clamp(camera.zoom,fitZoom(view),MAX_ZOOM)
   for(const [axis,dimension] of [['x','w'],['y','h']]){
-    const half=MAP_VIEW[dimension]/camera.zoom/2,size=MAP_SIZE[dimension],start=MAP_BOUNDS[axis]
+    const half=view[dimension]/camera.zoom/2,size=MAP_SIZE[dimension],start=MAP_BOUNDS[axis]
     camera[axis]=half>=size/2?start+size/2:clamp(camera[axis],start+half,start+size-half)
   }
   return camera
 }
 export function createCamera(site=MAP_BASE){return constrainCamera({x:site.x,y:site.y,zoom:REGION_ZOOM})}
-export function mapToScreen(camera,p){return {x:MAP_VIEW.x+MAP_VIEW.w/2+(p.x-camera.x)*camera.zoom,y:MAP_VIEW.y+MAP_VIEW.h/2+(p.y-camera.y)*camera.zoom}}
-export function screenToMap(camera,p){return {x:camera.x+(p.x-MAP_VIEW.x-MAP_VIEW.w/2)/camera.zoom,y:camera.y+(p.y-MAP_VIEW.y-MAP_VIEW.h/2)/camera.zoom}}
+export function mapToScreen(camera,p){const center=viewCenter(camera);return {x:center.x+(p.x-camera.x)*camera.zoom,y:center.y+(p.y-camera.y)*camera.zoom}}
+export function screenToMap(camera,p){const center=viewCenter(camera);return {x:camera.x+(p.x-center.x)/camera.zoom,y:camera.y+(p.y-center.y)/camera.zoom}}
 export function anchorCamera(camera,zoom,world,screen){
-  camera.zoom=clamp(zoom,MIN_ZOOM,MAX_ZOOM)
-  camera.x=world.x-(screen.x-MAP_VIEW.x-MAP_VIEW.w/2)/camera.zoom
-  camera.y=world.y-(screen.y-MAP_VIEW.y-MAP_VIEW.h/2)/camera.zoom
+  const center=viewCenter(camera)
+  camera.zoom=clamp(zoom,fitZoom(cameraView(camera)),MAX_ZOOM)
+  camera.x=world.x-(screen.x-center.x)/camera.zoom
+  camera.y=world.y-(screen.y-center.y)/camera.zoom
   return constrainCamera(camera)
 }
-export function zoomCamera(camera,factor,screen={x:720,y:399}){return anchorCamera(camera,camera.zoom*factor,screenToMap(camera,screen),screen)}
+export function zoomCamera(camera,factor,screen=viewCenter(camera)){return anchorCamera(camera,camera.zoom*factor,screenToMap(camera,screen),screen)}
 export function panCamera(camera,dx,dy){camera.x-=dx/camera.zoom;camera.y-=dy/camera.zoom;return constrainCamera(camera)}
-export function fitCamera(camera){return Object.assign(camera,{x:MAP_BOUNDS.x+MAP_SIZE.w/2,y:MAP_BOUNDS.y+MAP_SIZE.h/2,zoom:MIN_ZOOM})}
+export function fitCamera(camera){return Object.assign(camera,{x:MAP_BOUNDS.x+MAP_SIZE.w/2,y:MAP_BOUNDS.y+MAP_SIZE.h/2,zoom:fitZoom(cameraView(camera))})}
 export function focusCamera(camera,site){return constrainCamera(Object.assign(camera,{x:site.x,y:site.y,zoom:Math.max(.65,camera.zoom)}))}

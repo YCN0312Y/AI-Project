@@ -1,5 +1,5 @@
 import { C,box,text,line,circle,icon,tank,poly,brackets,weaponArt,baseRegionMap,regionRoads,villageFields,mapFlag } from './art.js'
-import { MAP_CORE,MAP_BOUNDS,MAP_VIEW,MAP_LOCAL_VILLAGES,MAP_REGIONS,MAP_REGION_ROADS,REGION_KINDS,MAP_TERRAIN_STYLES,MAP_FLAG_COLORS,mapBase,mapRegion,mapVillage,MAP_ROADS,MAP_TRAILS,MAP_FIELDS,mapField,mapLocation,mapMarkerScale,createCamera,mapToScreen,screenToMap,anchorCamera,zoomCamera,panCamera,fitCamera,focusCamera } from './world-map.js'
+import { MAP_CORE,MAP_BOUNDS,MAP_VIEW,MAP_LOCAL_VILLAGES,MAP_REGIONS,MAP_REGION_ROADS,REGION_KINDS,MAP_TERRAIN_STYLES,MAP_FLAG_COLORS,mapBase,mapRegion,mapVillage,MAP_ROADS,MAP_TRAILS,MAP_FIELDS,mapField,mapLocation,mapMarkerScale,createCamera,mapToScreen,screenToMap,anchorCamera,zoomCamera,panCamera,fitCamera,focusCamera,constrainCamera } from './world-map.js'
 import {regionRecord,regionUnits,regionLocalUnits,regionEnemyTroops,regionOwner,regionDispatch,occupyRegion,recallRegion,resolveRegionBattle} from './regions.js'
 import {startMarch,startGarrisonTransfer,advanceMarches,marchPosition,marchTarget,routeLength,MARCH_SPEED,takeMarchBattle} from './marching.js'
 import {farmTravelPosition,farmRouteLength,FARM_TRAVEL_SPEED} from './farm-travel.js'
@@ -173,8 +173,16 @@ export class Game {
     const i=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();this.vw=i.windowWidth;this.vh=i.windowHeight
     this.dpr=Math.min(i.pixelRatio||1,1.5);this.canvas.width=Math.round(this.vw*this.dpr);this.canvas.height=Math.round(this.vh*this.dpr)
     const a=i.safeArea||{left:0,top:0,right:this.vw,bottom:this.vh}
-    this.scale=Math.min((a.right-a.left)/1440,(a.bottom-a.top)/810);this.ox=a.left+(a.right-a.left-1440*this.scale)/2;this.oy=a.top+(a.bottom-a.top-810*this.scale)/2;this.cancelTouch();this.dirty=true
+    this.scale=Math.min((a.right-a.left)/1440,(a.bottom-a.top)/810)
+    this.ox=a.left+(a.right-a.left-1440*this.scale)/2
+    this.oy=a.top+(a.bottom-a.top-810*this.scale)/2
+    if(this.mapCamera&&this.scale>0){
+      this.mapCamera.view={...MAP_VIEW,x:-this.ox/this.scale,w:this.vw/this.scale}
+      constrainCamera(this.mapCamera)
+    }
+    this.cancelTouch();this.dirty=true
   }
+  get mapView(){return this.mapCamera?.view||MAP_VIEW}
   point(e){const t=e?.touches?.[0]||e?.changedTouches?.[0];return t?this.inputPoint(t):null}
   inputPoint(t){return {x:(t.clientX-this.ox)/this.scale,y:(t.clientY-this.oy)/this.scale}}
   command(e){
@@ -259,7 +267,7 @@ export class Game {
       if(!Number.isFinite(delta))return false
       this.rosterGesture=null;this.scrollRoster((this[list.key]||0)+delta);return true
     }
-    if(this.scene!=='world-map'||this.modal||!inside(p,MAP_VIEW))return false
+    if(this.scene!=='world-map'||this.modal||!inside(p,this.mapView))return false
     const delta=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?586:1)
     if(!Number.isFinite(delta))return false
     this.mapGesture=null;zoomCamera(this.mapCamera,Math.exp(-Math.max(-500,Math.min(500,delta))*.0015),p);this.dirty=true;return true
@@ -281,7 +289,7 @@ export class Game {
       this.rosterGesture={start:p,offset:this[key]||0,source,view,direction,moved:false}
       return
     }
-    if(this.scene==='world-map'&&!this.modal&&(this.mapGesture||inside(p,MAP_VIEW))){this.beginMapGesture(e,!!this.mapGesture);return}
+    if(this.scene==='world-map'&&!this.modal&&(this.mapGesture||inside(p,this.mapView))){this.beginMapGesture(e,!!this.mapGesture);return}
     if(e.touches.length>1)return
     const b=[...this.buttons].reverse().find(b=>inside(p,b));if(b){b.fn();this.dirty=true;return}
     if(this.scene==='battle'&&!this.modal){this.pressed=!this.battle.units;this.command(e);this.dirty=true}
@@ -543,13 +551,14 @@ export class Game {
   }})}
   render(){
     const c=this.ctx;c.setTransform(1,0,0,1,0,0);box(c,0,0,this.canvas.width,this.canvas.height,'#18231e');c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,this.ox*this.dpr,this.oy*this.dpr)
-    c.save();c.beginPath();c.rect(0,0,1440,810);c.clip()
+    const {x,w}=this.mapView
+    c.save();c.beginPath();c.rect(x,0,w,810);c.clip()
     this.buttons=[]
     if(this.scene==='lobby')this.drawLobby();else if(this.scene==='world-map')this.drawWorldMap();else this.drawBattle()
-    if(this.modal){this.buttons=[];box(c,0,0,1440,810,'rgba(17,30,24,.72)');this.drawModal()}
+    if(this.modal){this.buttons=[];box(c,x,0,w,810,'rgba(17,30,24,.72)');this.drawModal()}
     if(this.paused){
       this.buttons=[]
-      box(c,0,0,1440,810,'rgba(12,20,16,.86)')
+      box(c,x,0,w,810,'rgba(12,20,16,.86)')
       box(c,460,260,520,290,C.panel,2,C.gold);brackets(c,460,260,520,290,C.gold)
       text(c,'游戏已暂停',720,332,32,C.ink,800,'center')
       text(c,'时间与所有操作已锁定，点击下方按钮恢复游戏',720,388,16,C.muted,500,'center')
@@ -566,7 +575,9 @@ export class Game {
   }
   confirmStartingBase(){
     if(!this.choosingBase||!chooseStartingBase(this.save,this.mapSelected))return
+    const view=this.mapView
     this.choosingBase=false;this.mapSelected='base';this.mapCamera=createCamera(mapBase(this.save))
+    this.mapCamera.view=view;constrainCamera(this.mapCamera)
     this.persist();this.notify('根据地已设在'+mapBase(this.save).name)
   }
   openBaseRelocation(villageId=null){
@@ -673,8 +684,8 @@ export class Game {
     if(!march)return
     const xs=march.route.map(point=>point.x),ys=march.route.map(point=>point.y)
     const left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys)
-    const zoom=Math.min(.75,(MAP_VIEW.w-560)/Math.max(1,right-left),(MAP_VIEW.h-164)/Math.max(1,bottom-top))
-    anchorCamera(this.mapCamera,zoom,{x:(left+right)/2,y:(top+bottom)/2},{x:840,y:MAP_VIEW.y+MAP_VIEW.h/2})
+    const view=this.mapView,zoom=Math.min(.75,(view.w-560)/Math.max(1,right-left),(view.h-164)/Math.max(1,bottom-top))
+    anchorCamera(this.mapCamera,zoom,{x:(left+right)/2,y:(top+bottom)/2},{x:view.x+view.w/2+120,y:view.y+view.h/2})
     this.modal=null;this.dirty=true
   }
   beginRaid(id){
@@ -758,10 +769,10 @@ export class Game {
     c.restore()
   }
   drawRaidMarkers(markers){
-    const c=this.ctx,markerScale=mapMarkerScale(this.mapCamera)
+    const c=this.ctx,view=this.mapView,markerScale=mapMarkerScale(this.mapCamera)
     for(const {alert,march} of markers){
       const p=mapToScreen(this.mapCamera,march?.position||raidSite(alert.siteId))
-      if(p.x<-130||p.x>MAP_VIEW.w+130||p.y<MAP_VIEW.y-60||p.y>MAP_VIEW.y+MAP_VIEW.h+60)continue
+      if(p.x<view.x-130||p.x>view.x+view.w+130||p.y<view.y-60||p.y>view.y+view.h+60)continue
       if(march){
         const blue='#9dc7ff'
         circle(c,p.x,p.y,19,'#183047');icon(c,'army',p.x,p.y,25,blue)
@@ -798,14 +809,14 @@ export class Game {
     }
   }
   drawMapMarches(){
-    const c=this.ctx
+    const c=this.ctx,view=this.mapView
     for(const order of this.save.marchingOrders||[]){
       const point=marchPosition(order),target=marchTarget(order)
       const eta=Math.ceil((routeLength(order.route)-order.travelled)/(MARCH_SPEED*hungerStatus(this.save).speedMultiplier))
       order.unitIds.forEach((id,i)=>{
         const unit=this.save.formations.find(u=>u.id===id);if(!unit)return
         const p=mapToScreen(this.mapCamera,{x:point.x+(i%3-(Math.min(3,order.unitIds.length)-1)/2)*100,y:point.y+Math.floor(i/3)*130})
-        if(p.x<-100||p.x>1540||p.y<MAP_VIEW.y-80||p.y>MAP_VIEW.y+MAP_VIEW.h+80)return
+        if(p.x<view.x-100||p.x>view.x+view.w+100||p.y<view.y-80||p.y>view.y+view.h+80)return
         c.save();c.translate(p.x,p.y);c.scale(mapMarkerScale(this.mapCamera),mapMarkerScale(this.mapCamera))
         this.drawTacticalUnit({x:0,y:0,hp:unit.troops,maxHp:unit.troops,name:unitName(unit)},false,false)
         c.restore()
@@ -902,14 +913,15 @@ export class Game {
   }
   returnFromFarm(){if(this.farmReturnToMap)this.openWorldMap();else this.open('base')}
   drawWorldMap(){
-    const c=this.ctx,v=MAP_VIEW,s=this.save,picking=this.choosingBase||this.relocatingBase||this.relocatingArmory,home=this.choosingBase?null:mapBase(s)
+    const c=this.ctx,v=this.mapView,s=this.save,picking=this.choosingBase||this.relocatingBase||this.relocatingArmory,home=this.choosingBase?null:mapBase(s)
     this.mapCamera||=picking?fitCamera({}):createCamera(home)
     const selection=mapLocation(this.mapSelected,s)
     const selected=picking?mapVillage(this.mapSelected):[home.villageId,home.roadId].includes(selection.id)?home:selection
     if(!picking)this.mapSelected=selected.id
     const camera=this.mapCamera,sites=[...MAP_LOCAL_VILLAGES,...MAP_REGIONS]
     const raids=s.raidAlerts.map(alert=>({alert,march:raidMarch(alert)}))
-    box(c,0,0,1440,810,C.paper)
+    box(c,v.x,0,v.w,810,C.panel)
+    box(c,v.x,v.y,v.w,v.h,'#24352a')
     c.save();c.beginPath();c.rect(v.x,v.y,v.w,v.h);c.clip()
     const origin=mapToScreen(camera,{x:0,y:0})
     c.save();c.translate(origin.x,origin.y);c.scale(camera.zoom,camera.zoom)
@@ -1312,10 +1324,11 @@ export class Game {
     },'accent')
   }
   drawBattle(){
-    const c=this.ctx,b=this.battle;box(c,0,0,1440,810,'#26352a')
-    for(let x=0;x<1440;x+=60)line(c,x,116,x,665,'#344435')
-    for(let y=130;y<670;y+=60)line(c,0,y,1440,y,'#344435')
-    poly(c,[[0,510],[400,400],[800,460],[1440,250],[1440,320],[820,520],[430,460],[0,570]],'#454c38')
+    const c=this.ctx,b=this.battle,{x:left,w:width}=this.mapView,right=left+width
+    box(c,left,0,width,810,'#26352a')
+    for(let x=Math.ceil(left/60)*60;x<right;x+=60)line(c,x,116,x,665,'#344435')
+    for(let y=130;y<670;y+=60)line(c,left,y,right,y,'#344435')
+    poly(c,[[left,510],[0,510],[400,400],[800,460],[1440,250],[right,250],[right,320],[1440,320],[820,520],[430,460],[0,570],[left,570]],'#454c38')
     for(let i=0;i<14;i++){const x=(i*337+90)%1440,y=140+(i*191)%480;box(c,x,y,38,16,'#536047',2);line(c,x+8,y+5,x+28,y+5,'#748266',2)}
     if(!b.units){c.save();c.setLineDash([5,6]);c.strokeStyle='#5a7d4d';c.beginPath();c.arc(b.target.x,b.target.y,28,0,Math.PI*2);c.stroke();c.setLineDash([]);c.restore()}
     if(b.artillery>4.65&&this.save.settings.effects)box(c,0,118,1440,540,'rgba(255,228,169,.5)')
@@ -1335,12 +1348,12 @@ export class Game {
     }
     for(const s of b.shots)line(c,s.x,s.y,s.tx,s.ty,s.hostile?'#b57859':s.kind==='melee'?C.gold:weaponById(s.kind).color,s.kind==='sniper'?3:2)
     if(this.save.settings.effects)for(const f of b.bursts){c.save();c.globalAlpha=f.life/.4;circle(c,f.x,f.y,(1-f.life/.4)*(f.radius||25)+6,'#e7c989');c.restore()}
-    box(c,0,0,1440,116,C.paper);line(c,0,115,1440,115,C.line);text(c,b.regionName?b.regionName+(b.raidId?' · 驻地防守':' · 争夺战'):MODES.find(m=>m.id===b.mode)?.name||'战斗演练',42,37,25,'#f5f3e4',700);text(c,b.raidId?'驻军应敌':`第 ${b.level} 战区  /  波次 ${b.wave}${Number.isFinite(b.goal)?' / '+b.goal:''}`,42,80,16,'#bdc7b5')
+    box(c,left,0,width,116,C.paper);line(c,left,115,right,115,C.line);text(c,b.regionName?b.regionName+(b.raidId?' · 驻地防守':' · 争夺战'):MODES.find(m=>m.id===b.mode)?.name||'战斗演练',42,37,25,'#f5f3e4',700);text(c,b.raidId?'驻军应敌':`第 ${b.level} 战区  /  波次 ${b.wave}${Number.isFinite(b.goal)?' / '+b.goal:''}`,42,80,16,'#bdc7b5')
     text(c,`部队兵力  ${Math.ceil(b.hp)} / ${b.maxHp}`,460,38,20,'#f3f2dd',600);box(c,460,70,360,9,'#51604d',4);box(c,460,70,360*b.hp/b.maxHp,9,'#b5c68a',4)
     text(c,`歼敌 ${b.kills}${b.units?' 人':''}`,900,45,18,'#f1eedc',600)
     text(c,`${b.units?'我军 '+b.units.filter(unit=>unit.hp>0).length+'/'+b.units.length+' 支 · ':''}${Math.floor(b.time)}s`,900,78,13,'#b4c1aa')
     this.button('pause',1250,30,146,55,'暂停',()=>this.open('pause'),'light')
-    box(c,0,667,1440,143,C.paper);line(c,0,667,1440,667,C.olive)
+    box(c,left,667,width,143,C.paper);line(c,left,667,right,667,C.olive)
     if(b.units){
       const selected=b.selectedUnit
       text(c,selected?`已选 ${selected.name} · 点击地面下达移动命令`:'点击战场中的部队，或底部部队卡片进行选择',42,139,16,selected?C.olive:C.muted,600)
@@ -2211,6 +2224,9 @@ export class Game {
       text(c,'暂停游戏',312,531,22,C.ink,700);text(c,'停止推进一切时间，并锁定所有操作直到点击继续游戏',312,565,15,C.muted)
       this.button('settings-pause',935,517,190,56,'暂停游戏',()=>this.togglePause(),'gold')
       text(c,'进度自动保存在当前设备。战斗进行中退出不会保存战场。',312,612,15,C.muted);text(c,'指挥前线  /  原型版本 0.1.0',312,644,13,C.muted)
+      if(typeof wx!=='undefined'&&wx.canFullscreen?.())this.button('settings-fullscreen',935,591,190,56,wx.isFullscreen()?'退出全屏':'进入全屏',()=>{
+        wx.toggleFullscreen().catch(()=>this.notify('当前浏览器无法进入全屏，请在系统浏览器中打开'))
+      },'accent')
     }else if(type==='pause'){
       text(c,'部队正在等待你的下一道命令。',720,338,25,C.ink,600,'center');text(c,'离开战场会按当前战果结算。',720,393,17,C.muted,400,'center')
       this.button('resume',486,465,468,65,'继续战斗',()=>{this.modal=null},'accent');this.button('leave',486,548,468,60,'结束行动并结算',()=>this.open('retreat'),'light')

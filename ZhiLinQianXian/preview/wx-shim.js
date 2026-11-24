@@ -57,6 +57,11 @@
     });
     if(options.editable){input.focus();input.select()}else confirm.focus();
   }
+  const safeAreaProbe=document.createElement('div');
+  safeAreaProbe.style.cssText='position:fixed;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px)';
+  document.body.append(safeAreaProbe);
+  const isFullscreen=()=>!!(document.fullscreenElement||document.webkitFullscreenElement);
+
   window.wx = {
     createCanvas() {
       const c = document.createElement('canvas');
@@ -79,7 +84,25 @@
       }
       return c;
     },
-    getWindowInfo:()=>({windowWidth:innerWidth,windowHeight:innerHeight,pixelRatio:devicePixelRatio,safeArea:{left:0,top:0,right:innerWidth,bottom:innerHeight}}),
+    getWindowInfo(){
+      const canvas=main?.getBoundingClientRect();
+      const width=canvas?.width||innerWidth,height=canvas?.height||innerHeight;
+      const style=getComputedStyle(safeAreaProbe);
+      const inset=edge=>parseFloat(style['padding'+edge])||0;
+      return {windowWidth:width,windowHeight:height,pixelRatio:devicePixelRatio,
+        safeArea:{left:inset('Left'),top:inset('Top'),right:width-inset('Right'),bottom:height-inset('Bottom')}};
+    },
+    isFullscreen,
+    canFullscreen:()=>isFullscreen()||!!(document.fullscreenEnabled||document.webkitFullscreenEnabled),
+    async toggleFullscreen(){
+      if(isFullscreen()){
+        const exit=document.exitFullscreen||document.webkitExitFullscreen;
+        await exit.call(document);
+      }else{
+        const root=document.documentElement,enter=root.requestFullscreen||root.webkitRequestFullscreen;
+        await enter.call(root);
+      }
+    },
     getStorageSync:key=>{try{return JSON.parse(localStorage.getItem(key))}catch{return null}},
     setStorageSync:(key,value)=>localStorage.setItem(key,JSON.stringify(value)),
     onTouchStart:fn=>listeners.start.push(fn),onTouchMove:fn=>listeners.move.push(fn),onTouchEnd:fn=>listeners.end.push(fn),onTouchCancel:fn=>listeners.cancel.push(fn),onMouseWheel:fn=>listeners.wheel.push(fn),
@@ -109,4 +132,7 @@
   window.addEventListener('pagehide',hide);
   window.addEventListener('pageshow',event=>{if(event.persisted&&!document.hidden)emit('show')});
   window.addEventListener('resize',()=>emit('resize'));
+  window.visualViewport?.addEventListener('resize',()=>emit('resize'));
+  document.addEventListener('fullscreenchange',()=>emit('resize'));
+  document.addEventListener('webkitfullscreenchange',()=>emit('resize'));
 })();
