@@ -2,11 +2,10 @@ import { WEAPONS,restoreBulletCount } from './weapons.js'
 import { FOODS,FISH,DISHES,freshLogistics,RECRUITMENT,RATIONS,HUNGER,recruitmentFoodCost,recruitmentSupport,VILLAGE_SUPPLY_IDS,normalizeVillageMobilization } from './logistics.js'
 import { freshShop,normalizeShop,buyStock } from './shop.js'
 import { freshBase,normalizeBase,farmWorkers,farmReserveWorkers,farmTasks,formationActivity,activityLabel,activeFormationIds } from './base.js'
-import {freshFacilities,normalizeFacilities} from './facilities.js'
-import {normalizeTraining} from './training.js'
+import {applyProductionLosses,freshFacilities,normalizeFacilities} from './facilities.js'
 import {freshVillages,normalizeVillages,reconcileVillageGarrisons,villageOfFormation,villageEnemyTroops} from './villages.js'
 import {ALL_VILLAGES,FORMER_BASE_VILLAGE_ID,mapLocation,mapRegion,mapVillage} from './world-map.js'
-import {freshRegions,normalizeRegions} from './regions.js'
+import {freshRegions,generateStartingRegions,normalizeRegions} from './regions.js'
 import {freshMarches,normalizeMarches,marchOrigin} from './marching.js'
 import {freshGathering,normalizeGathering} from './gathering.js'
 import {freshRaids,normalizeRaids} from './raids.js'
@@ -208,7 +207,7 @@ export function validateReinforcement(s,id,count,weapons=null,expectedTroops=nul
   if(count>space.personnel)return {ok:false,message:`未编人员不足：需要补充 ${count} 人，当前仅有 ${space.personnel} 人`}
   // 修改配装时传入最终总数，允许卸下已有武器；库存总量不变，只释放配发占用。
   if(replaceWeapons)return validateFormation(s,unit.type,unit.troops+count,id,weapons??unit.weapons)
-  // 新增配发可用于新兵或缺枪老兵；原有已配武器始终保留，允许不增配。
+  // 新增配发可用于补入人员或缺枪士兵；原有已配武器始终保留，允许不增配。
   const extra=weapons===null?reinforcementAdditionalWeapons(s,id,count):weapons
   if(!extra||typeof extra!=='object'||Array.isArray(extra)||Object.keys(extra).some(id=>!WEAPONS.some(weapon=>weapon.id===id)))return {ok:false,message:'请选择有效的新增武器配发'}
   const spare=formationResources(s).weapons,combined={};let allocated=0
@@ -267,28 +266,17 @@ export function setFormation(s,type,troops,id=null,weapons=null){
   const result=validateFormation(s,type,troops,id,weapons)
   if(!result.ok)return result
   const existing=s.formations.find(u=>u.id===id)
-  const unassigned=formation(s).unassignedTroops+farmReserveWorkers(s)
-  const takeReserve=count=>{
-    const xp=unassigned?Math.floor((s.reserveTrainingXp||0)*count/unassigned):0
-    s.reserveTrainingXp=(s.reserveTrainingXp||0)-xp;return xp
-  }
   if(existing){
     if(existing.type!==type)existing.number=nextFormationNumber(s,type,id,existing.splitParent??null)
-    if(troops>existing.troops)existing.trainingXp=(existing.trainingXp||0)+takeReserve(troops-existing.troops)
-    else if(troops<existing.troops){
-      const released=Math.floor((existing.trainingXp||0)*(existing.troops-troops)/existing.troops)
-      existing.trainingXp=(existing.trainingXp||0)-released;s.reserveTrainingXp=(s.reserveTrainingXp||0)+released
-    }
     existing.type=type;existing.troops=troops;existing.weapons=result.weapons;refreshFormationParents(s,id)
   }
-  else s.formations.push({id:nextInternalId(s),number:nextFormationNumber(s,type),type,troops,weapons:result.weapons,trainingXp:takeReserve(troops),...(type==='squad'&&troops<7?{lowStrength:true}:{})})
+  else s.formations.push({id:nextInternalId(s),number:nextFormationNumber(s,type),type,troops,weapons:result.weapons,...(type==='squad'&&troops<7?{lowStrength:true}:{})})
   return {ok:true}
 }
 export function removeFormation(s,id){
   const i=s.formations.findIndex(u=>u.id===id)
   if(formationActivity(s,id))return false
   if(i<0||s.formations[i].children||formationParent(s,id))return false
-  s.reserveTrainingXp=(s.reserveTrainingXp||0)+(s.formations[i].trainingXp||0)
   s.formations.splice(i,1);return true
 }
 // 按最大余数法分配幸存人数，保证下属、武器的整数总数与实际幸存人数一致。
@@ -329,7 +317,6 @@ function inheritFallenFormations(s,fallen,battle){
   normalizeFormationNumbers(s.formations,false)
   for(const successor of new Set(successors)){
     for(const actor of battle.units)if(actor.id===successor.id){actor.type=successor.type;actor.name=formationName(successor)}
-    for(const task of [s.trainingTask,...Object.values(s.villageTrainingTasks)])if(task?.unitId===successor.id)task.name=formationName(successor)
   }
 }
 function retainFormationSurvivors(s,id,count,fallen){
@@ -345,7 +332,6 @@ function retainFormationSurvivors(s,id,count,fallen){
     const counts=splitSurvivors([...WEAPONS.map(weapon=>unit.weapons[weapon.id]),unit.troops-Object.values(unit.weapons).reduce((sum,n)=>sum+n,0)],count)
     // 仅在基层扣阵亡士兵携带的武器；合编上级只汇总，避免同一把重复扣除。
     WEAPONS.forEach((weapon,i)=>{s.weaponCounts[weapon.id]-=unit.weapons[weapon.id]-counts[i]})
-    unit.trainingXp=Math.floor((unit.trainingXp||0)*count/unit.troops)
     unit.weapons=Object.fromEntries(WEAPONS.map((weapon,i)=>[weapon.id,counts[i]]));unit.troops=count
   }
   if(!count)removeFallenFormation(s,unit,fallen)
@@ -358,7 +344,12 @@ export function applyBattleLosses(s,battle,includeSurvivors=false){
   // 分遣Actor共用原编制身份，按实际阵亡武器结算，不能将主营的剩余人数当成整营。
   if(typeof battle.collectLosses==='function'){
     let lost=0
-    for(const [id,losses] of Object.entries(battle.collectLosses(includeSurvivors))){
+    const casualties=battle.collectLosses(includeSurvivors)
+    if(battle.productionLosses){
+      applyProductionLosses(s,battle.productionLosses)
+      battle.productionLosses=[]
+    }
+    for(const [id,losses] of Object.entries(casualties)){
       const root=formationRoots(s).find(unit=>unit.id===Number(id));if(!root)continue
       const leaves=[],visit=unit=>{if(unit.children)unit.children.forEach(id=>visit(s.formations.find(child=>child.id===id)));else leaves.push(unit)}
       visit(root)
@@ -375,7 +366,7 @@ export function applyBattleLosses(s,battle,includeSurvivors=false){
         leaves.forEach((unit,i)=>{unit.weapons[weapon.id]-=shares[i];removed.set(unit.id,removed.get(unit.id)+shares[i])})
         s.weaponCounts[weapon.id]-=count;lost+=count
       }
-      for(const unit of leaves){const count=removed.get(unit.id);if(count){unit.trainingXp=Math.floor((unit.trainingXp||0)*(unit.troops-count)/unit.troops);unit.troops-=count;unit.battleDamaged=true}}
+      for(const unit of leaves){const count=removed.get(unit.id);if(count){unit.troops-=count;unit.battleDamaged=true}}
       const refresh=unit=>{
         if(unit.children){unit.children=unit.children.filter(id=>refresh(s.formations.find(child=>child.id===id)));const children=s.formations.filter(child=>unit.children.includes(child.id));unit.troops=children.reduce((sum,child)=>sum+child.troops,0);unit.weapons=sumFormationWeapons(children);unit.battleDamaged=true}
         if(unit.troops<=0){removeFallenFormation(s,unit,fallen);return false}return true
@@ -405,8 +396,8 @@ export function applyBattleLosses(s,battle,includeSurvivors=false){
 }
 export const MODES = [
   {id:'campaign',name:'大地图',en:'WORLD MAP',color:'#b0c881',tag:'战区态势',desc:'查看战区，选择部队行动。'},
-  {id:'recruitment',name:'发动群众',en:'MOBILIZATION',color:'#d9ac5a',tag:'兵员招募',desc:'慰问乡亲，动员新兵加入部队。'},
-  {id:'base',name:'根据地',en:'BASE AREA',color:'#87bac0',tag:'建设发展',desc:'训练、耕地，建设部队根据地。'},
+  {id:'recruitment',name:'发动群众',en:'MOBILIZATION',color:'#d9ac5a',tag:'兵员招募',desc:'慰问乡亲，招募人员加入部队。'},
+  {id:'base',name:'根据地',en:'BASE AREA',color:'#87bac0',tag:'建设发展',desc:'安排耕地，建设部队根据地。'},
 ]
 export const GOODS = [
   {id:'bullets',name:'子弹',category:'ammo',desc:'步枪、手枪、轻机枪、狙击枪通用',price:40,amount:30,unit:'发',icon:'ammo'},
@@ -435,7 +426,16 @@ export function applyRequestedRiceSupply(s){
   s.rice=Math.min(10000000,(s.rice||0)+1000000)
   s.warehouseRiceSupply20261117=true;return true
 }
-export function freshSave(){return {...freshRaids(),...freshGathering(),...freshLogistics(),...freshShop(),...freshBase(),...freshFacilities(),...freshVillages(),...freshRegions(),...freshMarches(),baseVillageId:null,trainingTask:null,warehouseRiceSupply20261117:true,warehouseFoodAdjustmentVersion:1,name:'新晋指挥官',coins:600,troops:120,medkits:3,shells:2,bullets:0,mortarAmmo:0,grenades:0,bandages:0,stage:1,wins:0,kills:0,bestWave:0,expeditions:0,trainingSessions:0,reserveTrainingXp:0,recruitedTroops:0,recruitmentCount:0,claimed:[],formations:[],formationNumberVersion:FORMATION_NUMBER_VERSION,weaponStockVersion:2,weaponCounts:Object.fromEntries(WEAPONS.map(w=>[w.id,w.id==='rifle'?120:0])),equippedWeapon:'rifle',settings:{effects:true,vibration:true,music:true}}}
+export function freshSave(){return {...freshRaids(),...freshGathering(),...freshLogistics(),...freshShop(),...freshBase(),...freshFacilities(),...freshVillages(),...freshRegions(),...freshMarches(),baseVillageId:null,warehouseRiceSupply20261117:true,warehouseFoodAdjustmentVersion:1,name:'新晋指挥官',coins:600,troops:120,medkits:3,shells:2,bullets:0,mortarAmmo:0,grenades:0,bandages:0,stage:1,wins:0,kills:0,bestWave:0,expeditions:0,recruitedTroops:0,recruitmentCount:0,claimed:[],formations:[],formationNumberVersion:FORMATION_NUMBER_VERSION,weaponStockVersion:2,weaponCounts:Object.fromEntries(WEAPONS.map(w=>[w.id,w.id==='rifle'?120:0])),equippedWeapon:'rifle',settings:{effects:true,vibration:true,music:true}}}
+export function createNewGameSave(random=Math.random){
+  const s=freshSave()
+  Object.assign(s,generateStartingRegions(random))
+  for(const village of ALL_VILLAGES){
+    const cap=s.villagePopulation[village.id],min=Math.ceil(cap*.7)
+    s.villagePopulation[village.id]=min+Math.floor(random()*(cap-min+1))
+  }
+  return s
+}
 export function chooseStartingBase(s,villageId){
   if(s.baseVillageId!==null||!mapVillage(villageId)||villageEnemyTroops(s,villageId)>0)return false
   s.baseVillageId=villageId
@@ -456,14 +456,15 @@ export function relocateBase(s,villageId){
   return {ok:true}
 }
 export function normalizeSave(raw){
-  const s=freshSave();if(!raw||typeof raw!=='object')return s
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))return createNewGameSave()
+  const s=freshSave()
   s.baseVillageId=raw.baseVillageId===null||mapVillage(raw.baseVillageId)?raw.baseVillageId:FORMER_BASE_VILLAGE_ID
   s.warehouseRiceSupply20261117=raw.warehouseRiceSupply20261117===true
   s.warehouseFoodAdjustmentVersion=raw.warehouseFoodAdjustmentVersion===1?1:0
   Object.assign(s,normalizeShop(raw))
   if(Number.isFinite(raw.mobilizationDiscounts))s.mobilizationDiscounts=Math.max(0,Math.min(10000000,Math.floor(raw.mobilizationDiscounts)))
   if(typeof raw.name==='string'&&raw.name.trim())s.name=Array.from(raw.name.trim()).slice(0,12).join('')
-  for(const key of new Set(['coins','shells','mobilizationFood','mobilizationCoins','lastMealShortage','lastMealServed','foodConsumed','dishesCooked','villageSuppliesReceived','donationStreak','troops','stage','wins','kills','bestWave','expeditions','trainingSessions','recruitedTroops','recruitmentCount',FISH.id,...GOODS.map(item=>item.id),...DISHES.map(dish=>dish.id)])){
+  for(const key of new Set(['coins','shells','mobilizationFood','mobilizationCoins','lastMealShortage','lastMealServed','foodConsumed','dishesCooked','villageSuppliesReceived','donationStreak','troops','stage','wins','kills','bestWave','expeditions','recruitedTroops','recruitmentCount',FISH.id,...GOODS.map(item=>item.id),...DISHES.map(dish=>dish.id)])){
     if(Number.isFinite(raw[key]))s[key]=Math.max(0,Math.min(10000000,Math.floor(raw[key])))
   }
   s.bullets=restoreBulletCount(raw)
@@ -503,7 +504,7 @@ export function normalizeSave(raw){
       const lowStrength=unit.type==='squad'&&unit.lowStrength===true
       const result=validateFormation(s,unit.type,unit.troops,null,unit.weapons===undefined?null:unit.weapons,unit.battleDamaged===true||lowStrength)
       if(!result.ok)continue
-      s.formations.push({id:unit.id,number:unit.number,type:unit.type,troops:unit.troops,weapons:result.weapons,trainingXp:Number.isFinite(unit.trainingXp)?Math.max(0,Math.min(unit.troops*600,Math.floor(unit.trainingXp))):0,...(unit.battleDamaged===true?{battleDamaged:true}:{}),...(lowStrength?{lowStrength:true}:{}),...(Number.isSafeInteger(unit.splitParent)&&typeof unit.splitPrefix==='string'&&unit.splitPrefix.length<=60?{splitParent:unit.splitParent,splitPrefix:unit.splitPrefix}:{}),...(unit.splitOrigin!==undefined&&(typeof unit.splitOrigin==='string'||Number.isSafeInteger(unit.splitOrigin))?{splitOrigin:unit.splitOrigin}:{})});seen.add(unit.id)
+      s.formations.push({id:unit.id,number:unit.number,type:unit.type,troops:unit.troops,weapons:result.weapons,...(unit.battleDamaged===true?{battleDamaged:true}:{}),...(lowStrength?{lowStrength:true}:{}),...(Number.isSafeInteger(unit.splitParent)&&typeof unit.splitPrefix==='string'&&unit.splitPrefix.length<=60?{splitParent:unit.splitParent,splitPrefix:unit.splitPrefix}:{}),...(unit.splitOrigin!==undefined&&(typeof unit.splitOrigin==='string'||Number.isSafeInteger(unit.splitOrigin))?{splitOrigin:unit.splitOrigin}:{})});seen.add(unit.id)
     }
     // 由低到高恢复合编关系，汇总以实际下属为准；无效上级不会吞掉原部队。
     for(let level=1;level<FORMATION_TYPES.length;level++){
@@ -527,14 +528,12 @@ export function normalizeSave(raw){
   normalizeBase(s,raw)
   reconcileVillageGarrisons(s)
   normalizeFacilities(s,raw)
-  normalizeTraining(s,raw)
   normalizeVillageMobilization(s,raw)
   normalizeRegions(s,raw)
   normalizeMarches(s,raw)
   normalizeGathering(s,raw)
   normalizeRaids(s,raw)
   syncIdleBranches(s)
-  if(Number.isFinite(raw.reserveTrainingXp))s.reserveTrainingXp=Math.max(0,Math.min((formation(s).unassignedTroops+farmWorkers(s))*600,Math.floor(raw.reserveTrainingXp)))
   for(const key of ['effects','vibration','music'])if(typeof raw.settings?.[key]==='boolean')s.settings[key]=raw.settings[key]
   return s
 }
@@ -546,22 +545,26 @@ export function settle(s,battle){
   if(battle.settled)return null
   applyBattleLosses(s,battle,true)
   battle.settled=true
-  const win=battle.won, waves=Math.max(0,battle.wave-1)
-  const coins=win?120+battle.level*20:battle.kills*4+(battle.mode==='defense'?waves*25:0)
+  const win=battle.won
+  const coins=win?30+battle.level*10:Math.min(10,Math.floor(battle.kills/4))
   s.coins+=coins;s.kills+=battle.kills
   if(win)s.wins++
   if(battle.mode==='campaign'&&win&&!battle.regionId&&!battle.raidId)s.stage=Math.min(12,Math.max(s.stage,battle.level+1))
   if(battle.mode==='defense')s.bestWave=Math.max(s.bestWave,battle.wave)
   const capturedWeapons=Object.fromEntries(WEAPONS.map(weapon=>[weapon.id,0]))
+  let capturedBullets=0
   if(battle.mode==='campaign'&&win){
     for(const weapon of WEAPONS){
-      const count=battle.defeatedWeapons?.[weapon.id]
+      const count=Math.floor(battle.defeatedWeapons?.[weapon.id])
       if(!Number.isFinite(count)||count<=0)continue
-      const added=Math.max(0,Math.min(Math.floor(count),10000000-s.weaponCounts[weapon.id]))
+      const added=Math.max(0,Math.min(count,10000000-s.weaponCounts[weapon.id]))
       s.weaponCounts[weapon.id]+=added;capturedWeapons[weapon.id]=added
+      if(weapon.ammo==='bullets')capturedBullets+=count*2
     }
+    capturedBullets=Math.max(0,Math.min(capturedBullets,10000000-s.bullets))
+    s.bullets+=capturedBullets
   }
-  return {coins,win,kills:battle.kills,wave:battle.wave,lostTroops:battle.lostTroops||0,lostUnits:battle.lostUnits||0,capturedWeapons}
+  return {coins,win,kills:battle.kills,wave:battle.wave,lostTroops:battle.lostTroops||0,lostUnits:battle.lostUnits||0,capturedWeapons,capturedBullets}
 }
 // 驻防地点节点：村庄用所属地区(或村庄)编号，地区驻防用地区编号；不在驻防则为 null。
 export function garrisonSite(s,id){
@@ -645,7 +648,6 @@ export function baseForces(s){
     if(formationActivity(s,u.id)==='battle')return true
     if(fieldWorkers.has(u.id))return true
     if(Object.values(s.armoryTasks||{}).some(task=>task.villageId&&task.unitIds.includes(u.id)))return true
-    if(Object.values(s.villageTrainingTasks||{}).some(t=>t&&!t.settled&&t.unitId===u.id))return true
     return false
   }
   const units=formationRoots(s).filter(u=>!activeUnit(u))
@@ -658,13 +660,13 @@ export function splitGarrisonUnit(s,id,type,troops){
   const unit=s.formations.find(u=>u.id===id)
   if(!unit||formationParent(s,id))return {ok:false,message:'请选择驻防中的独立部队'}
   const activity=formationActivity(s,id)
-  if(!['garrison','region'].includes(activity)||formationActivity(s,id,true))return {ok:false,message:'只有未在执行耕作、训练或设施任务的驻军才能分出部队'}
+  if(!['garrison','region'].includes(activity)||formationActivity(s,id,true))return {ok:false,message:'只有未在执行耕作或设施任务的驻军才能分出部队'}
   const origIdx=FORMATION_TYPES.findIndex(v=>v.id===unit.type),kindIdx=FORMATION_TYPES.findIndex(v=>v.id===type),kind=FORMATION_TYPES[kindIdx]
   if(kindIdx<0||kindIdx>=origIdx)return {ok:false,message:'只能分出低于当前编制的部队'}
   const maxTroops=Math.min(kind.max,unit.troops-1)
   if(!Number.isInteger(troops)||troops<kind.min||troops>maxTroops)return {ok:false,message:`${kind.name}人数须为 ${kind.min}—${maxTroops} 人，且原驻军至少保留 1 人`}
   const unitLeaves=node=>!node?[]:node.children?node.children.flatMap(cid=>unitLeaves(s.formations.find(u=>u.id===cid))):[node]
-  const newWeapons=Object.fromEntries(WEAPONS.map(w=>[w.id,0]));let newXp=0,need=troops,totalLeft=unit.troops
+  const newWeapons=Object.fromEntries(WEAPONS.map(w=>[w.id,0]));let need=troops,totalLeft=unit.troops
   for(const leaf of unitLeaves(unit)){
     if(need<=0)break
     const maxTake=totalLeft-need<=0?leaf.troops-1:Math.min(need,leaf.troops-(totalLeft-leaf.troops===0?1:0))
@@ -682,8 +684,6 @@ export function splitGarrisonUnit(s,id,type,troops){
         leaf.weapons[w.id]--;newWeapons[w.id]++;remainWeapons--;movedSum++
       }
     }
-    const xp=Math.round((leaf.trainingXp||0)*take/leaf.troops)
-    newXp+=xp;leaf.trainingXp=(leaf.trainingXp||0)-xp
     need-=take;totalLeft-=take;leaf.troops=remain
     if(remain===0)s.formations.splice(s.formations.indexOf(leaf),1)
     else if(remain<FORMATION_TYPES.find(v=>v.id===leaf.type).min)leaf.battleDamaged=true
@@ -700,7 +700,7 @@ export function splitGarrisonUnit(s,id,type,troops){
   if(unit.children)sync(unit)
   // 编号按各上级分别计数：同一上级分出的第一个班叫“上级-1班”，第二个叫“上级-2班”。
   const number=nextFormationNumber(s,type,null,unit.id)
-  const created={id:nextInternalId(s),number,type,troops,weapons:newWeapons,trainingXp:newXp,splitParent:unit.id,splitPrefix:formationName(unit),...(garrisonSite(s,unit.id)!==null?{splitOrigin:garrisonSite(s,unit.id)}:{})}
+  const created={id:nextInternalId(s),number,type,troops,weapons:newWeapons,splitParent:unit.id,splitPrefix:formationName(unit),...(garrisonSite(s,unit.id)!==null?{splitOrigin:garrisonSite(s,unit.id)}:{})}
   s.formations.push(created)
   return {ok:true,unit:created}
 }
@@ -739,11 +739,10 @@ export function rejoinFormation(s,id){
   }
   const plan=buildPlan(parent,FORMATION_TYPES.findIndex(kind=>kind.id===parent.type),branch.troops)
   if(plan.added!==branch.troops)return {ok:false,message:'上级下属编制的空位不足，无法接收整支分队'}
-  let people=branch.troops,xp=branch.trainingXp||0
   const weapons={...branch.weapons}
   const apply=({unit,kind,added,children})=>{
     if(!unit){
-      unit={id:nextInternalId(s),number:nextFormationNumber(s,kind.id),type:kind.id,troops:0,weapons:sumFormationWeapons([]),trainingXp:0}
+      unit={id:nextInternalId(s),number:nextFormationNumber(s,kind.id),type:kind.id,troops:0,weapons:sumFormationWeapons([])}
       s.formations.push(unit)
     }
     if(children){
@@ -759,8 +758,6 @@ export function rejoinFormation(s,id){
       for(const {id:weapon} of WEAPONS){
         const moved=Math.min(capacity,weapons[weapon]);unit.weapons[weapon]+=moved;weapons[weapon]-=moved;capacity-=moved
       }
-      const experience=Math.floor(xp*added/people)
-      unit.trainingXp=(unit.trainingXp||0)+experience;xp-=experience;people-=added
       unit.troops+=added
       if(unit.troops<kind.min)unit.battleDamaged=true
     }

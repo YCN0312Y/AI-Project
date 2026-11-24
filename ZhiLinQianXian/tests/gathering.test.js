@@ -179,14 +179,18 @@ test('河流驻军后台捕鱼，鲜鱼刷新保留，可在后勤仓库查看�
 
 test('采集界面列出已派部队并可单独停止其中一支部队工作',()=>{
   const g=Object.create(Game.prototype),labels=[]
-  const s=ready(2);Object.assign(g,{save:s,scene:'lobby',modal:null,buttons:[],persist(){},notify(){}})
+  const s=ready(3);Object.assign(g,{save:s,scene:'lobby',modal:null,buttons:[],persist(){},notify(){}})
   g.ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}}),fillText(value){labels.push(String(value))}},{get:(obj,key)=>obj[key]??(()=>{}),set:(obj,key,value)=>(obj[key]=value,true)})
   const draw=()=>{g.buttons=[];labels.length=0;g.drawModal();assert(g.buttons.every(b=>b.x+b.w<=1170&&b.y+b.h<=680))}
   const click=id=>{const b=g.buttons.find(b=>b.id===id);assert(b,id);b.fn()}
-  assert(occupyRegion(s,forest,[1,2]).ok)
+  assert(occupyRegion(s,forest,[1,2,3]).ok)
   assert(startGathering(s,forest,[1,2],'wood').ok)
+  step(s,30);assert(startGathering(s,forest,[3],'wood').ok)
   g.openRegion(forest);draw();click('region-gather');draw()
   assert(g.buttons.some(b=>b.id==='gather-unit-stop-1'));assert(g.buttons.some(b=>b.id==='gather-unit-stop-2'))
   click('gather-unit-stop-1');assert.equal(formationActivity(s,1),'region');assert.equal(formationActivity(s,2),'gathering')
-  assert.deepEqual(s.gatheringTasks[forest].wood.unitIds,[2])
+  assert.deepEqual(s.gatheringTasks[forest].wood.unitIds,[2,3])
+  assert.equal(s.gatheringTasks[forest].wood.elapsed,30)
+  step(s,30);assert.equal(s.materials.wood,10)
+  step(s,60);assert.equal(s.materials.wood,30)
 })

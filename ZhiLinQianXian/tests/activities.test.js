@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { freshSave,normalizeSave,setFormation,formation,formationResources,reinforceFormation,mergeFormations,unmergeFormation,removeFormation,settle } from '../js/state.js'
 import {farmTaskAt, startFarming,advanceFarming,cancelFarming,formationActivity,assignFormations,releaseFormations } from '../js/base.js'
 import { campaignDeployment } from '../js/campaign.js'
-import { createTraining,advanceTraining,completeTraining } from '../js/training.js'
 import { Game } from '../js/game.js'
 import {stationTroops} from '../js/villages.js'
 import {MAP_FIELDS} from '../js/world-map.js'
@@ -16,17 +15,17 @@ function game(s=freshSave()){
 function draw(g){g.buttons=[];g.drawModal();for(const b of g.buttons)assert(b.x>=270&&b.y>=130&&b.x+b.w<=1170&&b.y+b.h<=680,b.id)}
 function click(g,id){const b=g.buttons.find(b=>b.id===id);assert(b,id);b.fn()}
 
-test('无枪和缺枪可以创建及补员，原有武器经验保留，可单独给缺枪老兵补发',()=>{
+test('无枪和缺枪可以创建及补员，原有武器保留，可单独给缺枪人员补发',()=>{
   const s=freshSave();s.weaponCounts={...empty};assert(setFormation(s,'squad',9,null,{}).ok)
   assert.equal(formation(s).armedTroops,0);assert.equal(s.formations[0].troops,9)
-  s.formations[0].trainingXp=900;assert(reinforceFormation(s,1,3,{}).ok);assert.equal(s.formations[0].troops,12);assert.equal(s.formations[0].trainingXp,900)
+  assert(reinforceFormation(s,1,3,{}).ok);assert.equal(s.formations[0].troops,12)
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
-  assert.deepEqual(campaignDeployment(s,[1]).units[0].groups,[{weapon:null,troops:12,trainingBonus:0}])
+  assert.deepEqual(campaignDeployment(s,[1]).units[0].groups,[{weapon:null,troops:12}])
   s.weaponCounts.rifle=12;assert(reinforceFormation(s,1,0,{rifle:7}).ok);assert.equal(s.formations[0].weapons.rifle,7)
   assert.equal(campaignDeployment(s,[1]).units[0].groups.find(group=>!group.weapon).troops,5)
   assert(reinforceFormation(s,1,0,{rifle:5}).ok);assert(campaignDeployment(s,[1]).ok)
   assert.equal(reinforceFormation(s,1,0,{rifle:1}).ok,false)
-  assert.equal(s.formations[0].trainingXp,900);assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
+  assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
 })
 
 test('无武器编制遭遇伤亡时不凭空产生枪，部分配枪损失按武装与未武装人员一起分配',()=>{
@@ -44,7 +43,7 @@ test('代耕和自耕均可派无枪合编，按全体人数产出，父子占�
     const root=mergeFormations(s,[1,2,3]).unit;const unassigned=formation(s).unassignedTroops
     assert(startFarming(s,type,0,'rice',[root.id]).ok);assert.equal(s.farmTask.workers,21);assert.equal(formation(s).unassignedTroops,unassigned)
     assert.equal(formation(s).farmingTroops,21);assert.equal(formationActivity(s,1),'farm');assert.equal(formationActivity(s,root.id),'farm')
-    assert.equal(campaignDeployment(s,[root.id]).ok,false);assert.equal(createTraining(s,root.id),null)
+    assert.equal(campaignDeployment(s,[root.id]).ok,false)
     assert.equal(unmergeFormation(s,root.id).ok,false);assert.equal(setFormation(s,'squad',8,1).ok,false);assert.equal(removeFormation(s,1),false)
     assert.equal(startFarming(s,type,0,'rice',[1]).ok,false)
     const restored=normalizeSave(JSON.parse(JSON.stringify(s)));assert.deepEqual(restored,s);assert.equal(formationActivity(restored,root.id),'farm')
@@ -72,16 +71,6 @@ test('耕作与出战双向互斥，其他空闲编制仍可出战，结算后�
   cancelFarming(s);assert(startFarming(s,'self',0,'millet',[2]).ok)
 })
 
-test('训练编制不能耕作或出战，离开页面仍占用，完成或召回才释放；结算不能覆盖耕作任务',()=>{
-  const s=freshSave();setFormation(s,'squad',10);const g=game(s);g.trainingSelectedId=1;g.startTraining()
-  assert.equal(formationActivity(s,1),'training');assert.equal(startFarming(s,'help',0,'millet',[1]).ok,false);assert.equal(campaignDeployment(s,[1]).ok,false)
-  advanceTraining(g.training,30);g.finishTraining();assert.equal(formationActivity(s,1),null)
-  assert(startFarming(s,'help',0,'millet',[1]).ok);cancelFarming(s)
-  g.home();g.startTraining();g.home();assert.equal(formationActivity(s,1),'training');g.recallTraining();assert.equal(formationActivity(s,1),null)
-  const session=createTraining(s,1);advanceTraining(session,30);const xp=s.formations[0].trainingXp
-  startFarming(s,'self',0,'millet',[1]);assert.equal(completeTraining(s,session),null);assert.equal(s.formations[0].trainingXp,xp)
-})
-
 test('耕作不能用重复/下属/不存在编制冒领产出，散兵耕作仍占未编额度',()=>{
   const s=freshSave();for(let i=0;i<3;i++)setFormation(s,'squad',7);const parent=mergeFormations(s,[1,2,3]).unit
   for(const ids of [[],[parent.id,parent.id],[parent.id,1],[999]]){const before=JSON.stringify(s);assert.equal(startFarming(s,'self',0,'millet',ids).ok,false);assert.equal(JSON.stringify(s),before)}
@@ -106,12 +95,12 @@ test('战中阵亡部队的内部编号在行动结束前不被新部队复用',
   assert.equal(formationActivity(s,2),null);releaseFormations(s,'battle')
 })
 
-test('已有旅卸下593把轻机枪，士兵与经验保留，武器释放后可给别的编制使用',()=>{
+test('已有旅卸下593把轻机枪，士兵保留，武器释放后可给别的编制使用',()=>{
   const s=freshSave();s.troops=4000;s.weaponCounts={...empty,machinegun:593};s.equippedWeapon='machinegun'
-  assert(setFormation(s,'brigade',3000,null,{machinegun:593}).ok);s.formations[0].trainingXp=900000
+  assert(setFormation(s,'brigade',3000,null,{machinegun:593}).ok)
   assert(setFormation(s,'squad',10,null,{}).ok)
   assert(reinforceFormation(s,1,0,{},3000,true).ok)
-  assert.equal(s.formations[0].troops,3000);assert.equal(s.formations[0].trainingXp,900000)
+  assert.equal(s.formations[0].troops,3000)
   assert.deepEqual(s.formations[0].weapons,empty);assert.equal(s.weaponCounts.machinegun,593)
   assert.equal(formationResources(s).weapons.machinegun,593)
   assert(reinforceFormation(s,2,0,{machinegun:10},10,true).ok)
@@ -134,14 +123,14 @@ test('下属卸枪和重配同步上级，执行任务时不能卸枪，库存�
 })
 
 test('编辑已有武器可减号卸枪或全部卸下，取消不生效，补员不覆盖手动卸枪选择',()=>{
-  const s=freshSave();setFormation(s,'squad',9);s.formations[0].trainingXp=900
+  const s=freshSave();setFormation(s,'squad',9)
   const g=game(s),stock={...s.weaponCounts};g.editFormation(s.formations[0]);draw(g)
   assert.equal(g.formationDraft.weapons.rifle,9);click(g,'formation-weapon-minus-rifle')
   assert.equal(g.formationDraft.weapons.rifle,8);assert.equal(s.formations[0].weapons.rifle,9)
   click(g,'formation-cancel');assert.equal(s.formations[0].weapons.rifle,9)
   g.editFormation(s.formations[0]);draw(g);click(g,'formation-unarmed');g.setFormationReinforcements(3)
   assert.deepEqual(g.formationDraft.weapons,empty);draw(g);click(g,'formation-save')
-  assert.equal(s.formations[0].troops,12);assert.equal(s.formations[0].trainingXp,900)
+  assert.equal(s.formations[0].troops,12)
   assert.deepEqual(s.formations[0].weapons,empty);assert.deepEqual(s.weaponCounts,stock)
   assert.equal(formationResources(s).weapons.rifle,120);assert.deepEqual(normalizeSave(s),s)
 })

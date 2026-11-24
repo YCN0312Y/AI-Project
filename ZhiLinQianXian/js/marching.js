@@ -10,7 +10,7 @@ export const freshMarches=()=>({marchingOrders:[]})
 const distance=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y)
 export const routeLength=route=>route.slice(1).reduce((n,p,i)=>n+distance(route[i],p),0)
 export const marchTarget=order=>order.kind==='region'?mapRegion(order.targetId):ALL_VILLAGES.find(v=>v.id===order.targetId)
-const targetRegion=order=>order.kind==='region'?order.targetId:marchTarget(order)?.regionId??order.targetId
+export const marchRegionId=order=>order.kind==='region'?order.targetId:marchTarget(order)?.regionId??order.targetId
 
 export function marchRoute(target,origin='base'){
   if(origin==='base')origin=MAP_BASE.roadId
@@ -100,7 +100,9 @@ export function normalizeMarches(s,raw){
     const end=restoredRoute.at(-1)
     if(end.x!==target.x||end.y!==target.y)restoredRoute.push({x:target.x,y:target.y})
     const travelled=order.status==='awaiting-battle'?routeLength(restoredRoute):Math.min(order.travelled,routeLength(route))
-    used.add(order.id);s.marchingOrders.push({id:order.id,kind:order.kind,targetId:order.targetId,unitIds:[...ids],route:restoredRoute,travelled,status:order.status})
+    const restored={id:order.id,kind:order.kind,targetId:order.targetId,unitIds:[...ids],route:restoredRoute,travelled,status:order.status}
+    if(order.status==='awaiting-battle'&&order.waitForAll===true)restored.waitForAll=true
+    used.add(order.id);s.marchingOrders.push(restored)
   }
 }
 
@@ -108,7 +110,7 @@ export function advanceMarches(s,seconds){
   const arrived=[]
   if(!Number.isFinite(seconds)||seconds<0)return arrived
   for(const order of [...(s.marchingOrders||[])]){
-    const length=routeLength(order.route),regionId=targetRegion(order)
+    const length=routeLength(order.route),regionId=marchRegionId(order)
     if(order.status==='moving')order.travelled=Math.min(length,order.travelled+seconds*MARCH_SPEED*hungerStatus(s).speedMultiplier)
     if(order.travelled<length-1e-7)continue
     if(regionId&&regionEnemyTroops(s,regionId)>0){order.status='awaiting-battle';continue}
@@ -119,11 +121,4 @@ export function advanceMarches(s,seconds){
     else s.marchingOrders.push(order)
   }
   return arrived
-}
-
-export function takeMarchBattle(s,id){
-  const order=s.marchingOrders?.find(o=>o.id===id&&o.status==='awaiting-battle')
-  if(!order)return null
-  s.marchingOrders=s.marchingOrders.filter(o=>o!==order)
-  return {order,regionId:targetRegion(order)}
 }

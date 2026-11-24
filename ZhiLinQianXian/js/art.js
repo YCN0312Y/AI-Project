@@ -292,7 +292,7 @@ export function cardArt(c,mode,x,y,w,h){
     }
     icon(c,'army',321,177,39,'#9fb982')
   }else if(mode==='base'){
-    // 根据地：操场、农田与营房，替代单一训练靶场的大厅插画。
+    // 根据地插画包含操场、农田与营房。
     poly(c,[[0,190],[400,145],[400,300],[0,300]],'#526641')
     for(let i=0;i<6;i++)line(c,8+i*27,300,130+i*27,191,'#a7a46a',5)
     box(c,220,109,140,89,'#8b9470',2);poly(c,[[207,111],[289,63],[374,111]],'#bcc29b')
@@ -316,7 +316,7 @@ export function cardArt(c,mode,x,y,w,h){
   for(let px=0;px<400;px+=50)line(c,px,0,px,300,'rgba(190,215,165,.07)')
   if(mode!=='recruitment'&&mode!=='campaign'){brackets(c,232,90,70,69,'#cbd5a5');circle(c,267,124,2,'#e0bb6a')}
   for(let i=0;i<9;i++)line(c,12+i*45,289,12+i*45,294,'#96aa7f',1)
-  text(c,mode==='campaign'?'N 35° 42′ / E 108° 56′':mode==='recruitment'?'VILLAGE / VOLUNTEER ENLISTMENT':'TRAINING SECTOR / LIVE DRILL',66,282,9,'#c6d1b9',600)
+  text(c,mode==='campaign'?'N 35° 42′ / E 108° 56′':mode==='recruitment'?'VILLAGE / VOLUNTEER ENLISTMENT':'BASE AREA / COMMAND CENTER',66,282,9,'#c6d1b9',600)
   c.restore()
 }
 export function background(c){

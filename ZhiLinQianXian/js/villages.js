@@ -1,11 +1,11 @@
 import {ALL_VILLAGES,mapField,mapLocation} from './world-map.js'
 import {clearFarmTask,farmTasks,formationActivity} from './base.js'
 import {freshPopulation,normalizePopulation} from './population.js'
-import {detachGarrison,recallToStandby,syncIdleBranches} from './state.js'
+import {detachGarrison,garrisonSite,recallToStandby,syncIdleBranches} from './state.js'
 import {recallFacility} from './facilities.js'
-import {cancelTrainingTask} from './training.js'
+import {taskWorkersFrom} from './workforce.js'
 
-export const freshVillages=()=>({...freshPopulation(),garrisons:{},facilityVillages:{armory:null},villageTrainingTasks:{}})
+export const freshVillages=()=>({...freshPopulation(),garrisons:{},facilityVillages:{armory:null}})
 export const isVillage=id=>ALL_VILLAGES.some(v=>v.id===id)
 export const villageRegionId=id=>{const site=ALL_VILLAGES.find(v=>v.id===id);return site?.regionId??site?.id}
 export const villageEnemyTroops=(s,id)=>(s.mapRegions?.[villageRegionId(id)]?.enemies||[]).reduce((sum,unit)=>sum+unit.troops,0)
@@ -100,35 +100,48 @@ export function armoryTransferError(s,id){
 export function transferArmory(s,id){
   const message=armoryTransferError(s,id)
   if(message)return {ok:false,message}
-  const origin=s.facilityVillages.armory,movingIds=[...new Set(Object.values(s.armoryTasks).flatMap(t=>t.unitIds))]
-  for(const uid of movingIds){
-    for(const task of farmTasks(s))if(task.unitIds?.includes(uid)&&task.villageId!==id)clearFarmTask(s,task.fieldId)
-    if((s.garrisons[origin]||[]).includes(uid)){
-      s.garrisons[origin]=s.garrisons[origin].filter(k=>k!==uid)
-      if(!s.garrisons[origin].length)delete s.garrisons[origin]
-      s.garrisons[id]=[...new Set([...(s.garrisons[id]||[]),uid])]
-    }else{
-      const unit=s.formations.find(u=>u.id===uid)
-      if(unit&&unit.splitOrigin!==undefined)unit.splitOrigin=villageRegionId(id)
+  const tasks=Object.values(s.armoryTasks),workersByUnit=new Map()
+  const units=new Map(s.formations.map(unit=>[unit.id,unit]))
+  for(const task of tasks){
+    for(const unitId of task.unitIds){
+      const workers=taskWorkersFrom(task,unitId,units.get(unitId))
+      workersByUnit.set(unitId,(workersByUnit.get(unitId)||0)+workers)
     }
   }
-  for(const task of Object.values(s.armoryTasks))task.villageId=id
+  for(const [unitId,workers] of workersByUnit){
+    const unit=units.get(unitId)
+    if(workers!==unit?.troops||unitVillage(s,unitId)===id)continue
+    const station=garrisonSite(s,unitId)
+    if(station!==null)detachGarrison(s,station,unitId)
+    delete unit.splitOrigin
+    const stationed=s.garrisons[id]||=[]
+    stationed.push(unitId)
+  }
+  for(const task of tasks){
+    task.villageId=id
+    for(const allocation of task.allocations||[]){
+      if(unitVillage(s,allocation.unitId)===id)delete allocation.remote
+      else allocation.remote=true
+    }
+  }
   s.facilityVillages.armory=id
   syncIdleBranches(s)
   return {ok:true}
 }
+function clearVillageArmory(s){
+  for(const product of Object.keys(s.armoryTasks))recallFacility(s,product)
+  s.facilityVillages.armory=null
+}
 export function removeVillageFacility(s,kind,id){
   if(kind!=='armory'||!isVillage(id)||s.facilityVillages.armory!==id)return {ok:false,message:'本村没有兵工厂'}
   if(villageEnemyTroops(s,id)>0)return {ok:false,message:'请先夺回村庄，再拆除兵工厂'}
-  for(const product of Object.keys(s.armoryTasks))recallFacility(s,product)
-  s.facilityVillages.armory=null
+  clearVillageArmory(s)
   syncIdleBranches(s)
   return {ok:true}
 }
 export function evacuateVillage(s,id){
   for(const task of farmTasks(s))if(task.villageId===id||mapField(task.fieldId)?.villageId===id)clearFarmTask(s,task.fieldId)
-  if(s.facilityVillages.armory===id)for(const product of Object.keys(s.armoryTasks))recallFacility(s,product)
-  cancelTrainingTask(s,id)
+  if(s.facilityVillages.armory===id)clearVillageArmory(s)
   const stationed=new Set(s.garrisons[id]||[])
   for(const unit of s.formations)if(stationed.has(unit.id)||localSplitVillage(s,unit.id)===id)delete unit.splitOrigin
   delete s.garrisons[id]

@@ -5,7 +5,6 @@ import {stationTroops,villageOfFormation,placeVillageFacility,recallGarrison} fr
 import {availableWorkforce,validateAllocations} from '../js/workforce.js'
 import {farmTaskAt,startFarming,cancelFarming,formationActivity} from '../js/base.js'
 import {startProduction,recallFacility} from '../js/facilities.js'
-import {startTrainingTask} from '../js/training.js'
 import {advanceEconomy} from '../js/economy.js'
 import {donateFood,advanceLogistics,mobilizationRecord,mobilizationStatus,enableAllVillageMobilization,setAllVillagesMobilizing,setMobilizationActive,donateAllVillages,serveMealNow} from '../js/logistics.js'
 import {populationRule,villagePopulation,advancePopulation} from '../js/population.js'
@@ -24,15 +23,15 @@ function game(s=setup()){
 const draw=g=>{g.buttons=[];g.drawModal();for(const b of g.buttons)assert(b.x>=270&&b.y>=130&&b.x+b.w<=1170&&b.y+b.h<=680,b.id)}
 const click=(g,id)=>{const b=g.buttons.find(b=>b.id===id);assert(b,id);b.fn()}
 
-test('同一驻军可派班代耕并另派人员生产，余员守村，原人数武器经验不复制或丢失',()=>{
-  const s=setup();s.formations[0].trainingXp=2400;const original=structuredClone(s.formations[0]),weapons=structuredClone(s.weaponCounts)
+test('同一驻军可派班代耕并另派人员生产，余员守村，原人数和武器按实际编制结算',()=>{
+  const s=setup();const original=structuredClone(s.formations[0]),weapons=structuredClone(s.weaponCounts)
   placeVillageFacility(s,'armory',1);assert(farm(s).ok);assert(startProduction(s,[1],'rifle',1,part(14)).ok)
   assert.equal(availableWorkforce(s,1),19);assert.deepEqual(s.formations[0],original);assert.deepEqual(s.weaponCounts,weapons)
-  assert.equal(startTrainingTask(s,1,1).ok,false);assert.equal(recallGarrison(s,1,1).ok,false)
+  assert.equal(recallGarrison(s,1,1).ok,false)
   const loaded=clone(s);assert.deepEqual(loaded,s);assert.equal(availableWorkforce(loaded,1),19)
   advanceEconomy(loaded,70,()=>0);assert.equal(farmTaskAt(loaded,MAP_FIELDS[0].id),null);assert.equal(availableWorkforce(loaded,1),26);assert.equal(villageOfFormation(loaded,1),1)
   assert.equal(loaded.villagePopulation[1],499);assert.equal(loaded.troops,121)
-  advanceEconomy(loaded,230,()=>1);assert.equal(loaded.productionTotals.rifle,10)
+  advanceEconomy(loaded,230,()=>1);assert.equal(loaded.productionTotals.rifle,5)
   recallFacility(loaded,'rifle');assert.equal(availableWorkforce(loaded,1),40);assert.equal(formationActivity(loaded,1),'garrison')
   assert.deepEqual(loaded.formations[0],original);assert.deepEqual(clone(loaded),loaded)
 })
@@ -92,7 +91,7 @@ test('村民不足只招剩余人数，耗尽暂停招募不白扣储备，人�
 })
 
 test('部分派遣、人口增长与招募随机在整段/分步推进一致，不重复结算',()=>{
-  const a=setup();placeVillageFacility(a,'armory',1);farm(a);startProduction(a,[1],'rifle',1,part(7));donateFood(a,'coins',50,1)
+  const a=setup();placeVillageFacility(a,'armory',1);farm(a);assert(startProduction(a,[1],'rifle',1,part(10)).ok);donateFood(a,'coins',50,1)
   const b=structuredClone(a);advanceEconomy(a,300,()=>.4);for(let i=0;i<300;i++)advanceEconomy(b,1,()=>.4)
   const fieldId=MAP_FIELDS[0].id
   assert(Math.abs(a.fieldCooldowns[fieldId]-b.fieldCooldowns[fieldId])<1e-8)
@@ -107,7 +106,7 @@ test('地图村名下展示多支驻军，村庄人口可见；分遣班耕田�
   g.openMapField(MAP_FIELDS[0].id);draw(g);click(g,'farm-detach');draw(g);click(g,'work-root-1');draw(g);click(g,'work-type-squad');draw(g);click(g,'work-confirm')
   assert.equal(farmTaskAt(s,MAP_FIELDS[0].id).workers,7);assert.equal(farmTaskAt(s,MAP_FIELDS[0].id).allocations[0].type,'squad');assert.equal(s.formations[0].troops,40)
   g.openVillage(1);draw(g);click(g,'village-armory');draw(g);click(g,'facility-detach');draw(g);click(g,'work-root-1');draw(g);click(g,'work-confirm')
-  assert.equal(s.armoryTasks.rifle.workers,7);assert.equal(availableWorkforce(s,1),26);assert.equal(g.modal,'base-armory')
+  assert.equal(s.armoryTasks.rifle.workers,10);assert.equal(availableWorkforce(s,1),23);assert.equal(g.modal,'base-armory')
 })
 
 test('兵工厂分遣可选临时人员小组，取消窗口不占兵，村庄驻军不限一支',()=>{

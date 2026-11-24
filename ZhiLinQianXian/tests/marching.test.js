@@ -47,7 +47,6 @@ test('刷新保存路线和途中进度，无离线推进，合法状态恢复�
 test('驻军可从村庄直达其他据点再转驻其他村庄，刷新继续原路，不复制兵力武器',()=>{
   const s=setup(),site=MAP_REGIONS.find(site=>site.type==='mountain'&&!site.enemyTroops)
   assert(stationTroops(s,1,[1,2]).ok);assert(occupyRegion(s,site.id,[3]).ok)
-  s.formations[0].trainingXp=330
   const before=structuredClone(s),source=MAP_SITES[0]
   const result=startGarrisonTransfer(s,1,source.id,site.id)
   assert(result.ok,result.message);assert.deepEqual(marchPosition(result.order),{x:source.x,y:source.y})
@@ -110,6 +109,61 @@ test('抵达时有其他战斗或编辑窗口则等待，不覆盖当前战场�
   const loaded=normalizeSave(g.save);assert.equal(formationActivity(loaded,1),'march')
   g.modal=null;g.scene='battle';g.battle={done:false};const current=g.battle;g.updateMapMarches(1);assert.equal(g.battle,current)
   g.scene='world-map';g.updateMapMarches(0);assert.notEqual(g.battle,current);assert.equal(g.battle.regionId,target.id)
+})
+
+function convergeOnEnemy(){
+  const g=game(),s=g.save,target=MAP_REGIONS.find(site=>site.enemyTroops)
+  assert(stationTroops(s,1,[1]).ok);assert(stationTroops(s,5,[2]).ok)
+  g.dispatchRegion(target.id,[1,2]);assert.equal(s.marchingOrders.length,2)
+  const [near,far]=[...s.marchingOrders].sort((a,b)=>routeLength(a.route)-routeLength(b.route))
+  assert(routeLength(far.route)>routeLength(near.route))
+  g.updateMapMarches(routeLength(near.route)/MARCH_SPEED)
+  assert.equal(g.modal,'march-attack');assert.equal(g.battle,undefined)
+  assert.equal(near.status,'awaiting-battle');assert.equal(far.status,'moving')
+  g.drawModal()
+  return {g,target,firstId:near.unitIds[0],laterId:far.unitIds[0]}
+}
+
+test('近队抵达后可等待，刷新保留集结选择，到齐后全部出战',()=>{
+  const {g,target,firstId,laterId}=convergeOnEnemy()
+  g.buttons.find(button=>button.id==='march-attack-wait').fn()
+  assert.equal(g.modal,null);assert.equal(formationActivity(g.save,firstId),'march')
+  assert.equal(g.saved.marchingOrders.find(order=>order.unitIds.includes(firstId)).waitForAll,true)
+  const restored=game(normalizeSave(g.saved))
+  restored.updateMapMarches(0);assert.equal(restored.modal,null);assert.equal(restored.battle,undefined)
+  restored.updateMapMarches(10000)
+  assert.equal(restored.battle.regionId,target.id)
+  assert.deepEqual(restored.battle.units.map(unit=>unit.id).sort(),[firstId,laterId].sort())
+  assert.equal(restored.battle.maxHp,20);assert.deepEqual(restored.save.marchingOrders,[])
+})
+
+test('近队可立即开战，远队抵达时加入原战场并随幸存部队驻防',()=>{
+  const {g,target,firstId,laterId}=convergeOnEnemy()
+  g.buttons.find(button=>button.id==='march-attack-now').fn()
+  const s=g.save,battle=g.battle
+  assert.deepEqual(battle.units.map(unit=>unit.id),[firstId]);assert.equal(formationActivity(s,laterId),'march')
+  battle.units[0].hp=7;battle.time=6;battle.selectUnit(firstId)
+  const enemyQueue=battle.regionEnemyQueue
+  g.updateMapMarches(10000);g.updateMapMarches(0)
+  assert.equal(g.battle,battle);assert.equal(battle.regionEnemyQueue,enemyQueue)
+  assert.equal(battle.time,6);assert.equal(battle.selectedUnitId,firstId)
+  assert.deepEqual(battle.units.map(unit=>[unit.id,unit.hp]),[[firstId,7],[laterId,10]])
+  assert.deepEqual(battle.regionDeployedIds,[firstId,laterId]);assert.equal(formationActivity(s,laterId),'battle')
+  assert.equal(battle.hp,17);assert.equal(battle.maxHp,20);assert.equal(battle.armedTroops,20)
+  assert.deepEqual(s.marchingOrders,[])
+  battle.units[1].hp=8;battle.done=true;battle.won=true;g.finish()
+  assert.equal(g.result.lostTroops,5);assert.equal(s.troops,115);assert.equal(s.weaponCounts.rifle,115)
+  assert.deepEqual(regionUnits(s,target.id).map(unit=>unit.id).sort(),[firstId,laterId].sort())
+})
+
+test('先到部队在援军抵达前已占领目标时，援军到达后直接驻防',()=>{
+  const {g,target,firstId,laterId}=convergeOnEnemy()
+  g.buttons.find(button=>button.id==='march-attack-now').fn()
+  g.battle.done=true;g.battle.won=true;g.finish()
+  g.updateMapMarches(10000)
+  assert.deepEqual(regionUnits(g.save,target.id).map(unit=>unit.id).sort(),[firstId,laterId].sort())
+  assert.deepEqual(g.save.marchingOrders,[])
+  assert.equal(g.modal,'result')
 })
 
 test('每个行军根编制复用战斗Actor绘制，抵达后不再绘制，缩放不改变实际进度',()=>{

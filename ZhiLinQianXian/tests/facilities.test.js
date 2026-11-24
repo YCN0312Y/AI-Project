@@ -5,7 +5,6 @@ import {donateFood,advanceLogistics,recruitmentInterval,validateDonation} from '
 import {startProduction,recallFacility,advanceFacilities} from '../js/facilities.js'
 import {formationActivity,startFarming,cancelFarming} from '../js/base.js'
 import {advanceEconomy} from '../js/economy.js'
-import {createTraining} from '../js/training.js'
 import {campaignDeployment} from '../js/campaign.js'
 import {Game} from '../js/game.js'
 import {stationTroops,placeVillageFacility} from '../js/villages.js'
@@ -48,9 +47,10 @@ test('赠金币与食物支持可合并、享受代耕减耗，切换报名速�
   const old=normalizeSave({mobilizationCoins:10,recruitElapsed:7});assert.equal(old.recruitElapsed,7)
 })
 
-test('工厂每分钟按7人步枪、5人手枪、3人手雷生产，连续轮次产出不占商城限额',()=>{
-  for(const [product,amount] of [['rifle',1],['pistol',2],['grenades',3]]){
-    const s=ready(),before=structuredClone(s.shopStock),coins=s.coins,stock=product==='grenades'?s:s.weaponCounts,initial=stock[product]
+test('工厂每分钟按10人步枪、5人手枪、3人手雷和2人子弹生产，产出不占商城限额',()=>{
+  for(const [product,amount] of [['rifle',1],['pistol',2],['grenades',3],['bullets',5]]){
+    const s=ready(),before=structuredClone(s.shopStock),coins=s.coins
+    const stock=['rifle','pistol'].includes(product)?s.weaponCounts:s,initial=stock[product]
     assert(startProduction(s,[1],product).ok);advanceFacilities(s,59.9);assert.equal(stock[product],initial)
     assert.equal(advanceFacilities(s,.1).produced[0].amount,amount);assert.equal(stock[product],initial+amount)
     advanceFacilities(s,120);assert.equal(stock[product],initial+amount*3);assert.equal(s.productionTotals[product],amount*3)
@@ -69,7 +69,7 @@ test('旧武器项目迁移保留进度，兵工厂可同时派驻三项并单�
   click(g,'facility-unit-1');assert.deepEqual(g.facilitySelected,[])
   click(g,'facility-unit-2');draw(g);click(g,'facility-start');draw(g)
   click(g,'factory-product-grenades');draw(g);click(g,'facility-unit-3');draw(g);click(g,'facility-start');draw(g)
-  assert(['步枪','手枪','手雷','子弹','已派 1 / 5 支'].every(name=>labels.includes(name)))
+  assert(['步枪','手枪','手雷','子弹','已派 1 支'].every(name=>labels.includes(name)))
   assert.deepEqual(advanceFacilities(s,16).produced,[{product:'rifle',amount:1}])
   assert.equal(s.armoryTasks.pistol.elapsed,16);assert.equal(s.armoryTasks.grenades.elapsed,16)
   assert.deepEqual(normalizeSave(s),s)
@@ -78,7 +78,7 @@ test('旧武器项目迁移保留进度，兵工厂可同时派驻三项并单�
   assert.deepEqual(advanceFacilities(s,44).produced,[{product:'pistol',amount:2}])
 })
 
-test('在运行产线追加整编和分队到五支，保留原进度和本轮产量',()=>{
+test('在运行产线追加整编和分队超过五支，保留原进度和本轮产量',()=>{
   const s=ready(6),g=game(s)
   assert(stationTroops(s,1,[1,2,3,4,5,6]).ok);assert(placeVillageFacility(s,'armory',1).ok)
   g.openVillage(1);draw(g);click(g,'village-armory');draw(g)
@@ -88,15 +88,15 @@ test('在运行产线追加整编和分队到五支，保留原进度和本轮�
   draw(g);click(g,'facility-add');draw(g)
   click(g,'facility-unit-3');click(g,'facility-next');draw(g)
   click(g,'facility-unit-4');click(g,'facility-unit-5');click(g,'facility-unit-6');draw(g)
-  assert.deepEqual(g.facilitySelected,[3,4,5])
+  assert.deepEqual(g.facilitySelected,[3,4,5,6])
   click(g,'facility-start');draw(g)
-  assert(!g.buttons.some(button=>button.id==='facility-add'))
+  assert(g.buttons.some(button=>button.id==='facility-add'))
   assert.equal(startProduction(s,[6],'rifle',1).ok,false)
-  assert.equal(availableWorkforce(s,2),5);assert.equal(availableWorkforce(s,6),10)
+  assert.equal(availableWorkforce(s,2),5);assert.equal(availableWorkforce(s,6),0)
   const restored=normalizeSave(s);assert.deepEqual(restored,s)
-  assert.deepEqual(restored.armoryTasks.rifle.unitIds,[1,2,3,4,5])
+  assert.deepEqual(restored.armoryTasks.rifle.unitIds,[1,2,3,4,5,6])
   assert.deepEqual(advanceFacilities(restored,20).produced,[{product:'rifle',amount:1}])
-  assert.deepEqual(advanceFacilities(restored,60).produced,[{product:'rifle',amount:6}])
+  assert.deepEqual(advanceFacilities(restored,60).produced,[{product:'rifle',amount:5}])
   assert(recallFacility(restored,'rifle'));assert.equal(availableWorkforce(restored,2),10)
 })
 
@@ -121,28 +121,36 @@ test('通用子弹可与现有产线并行，多支部队同线生产，产出�
   assert.deepEqual(s.armoryTasks.bullets.unitIds,[2,3])
   assert.deepEqual(normalizeSave(s),s)
   assert.deepEqual(advanceFacilities(s,59).produced,[])
-  assert.deepEqual(advanceFacilities(s,1).produced,[{product:'rifle',amount:1},{product:'bullets',amount:100}])
-  assert.equal(s.bullets,100)
+  assert.deepEqual(advanceFacilities(s,1).produced,[{product:'rifle',amount:1},{product:'bullets',amount:10}])
+  assert.equal(s.bullets,10)
   advanceFacilities(s,240)
-  assert.equal(s.bullets,500);assert.equal(s.productionTotals.rifle,5);assert.equal(s.materials.ore,100)
-  assert.equal(s.weaponCounts.bullets,undefined);assert.equal(s.productionTotals.bullets,500)
+  assert.equal(s.bullets,50);assert.equal(s.productionTotals.rifle,5);assert.equal(s.materials.ore,145)
+  assert.equal(s.weaponCounts.bullets,undefined);assert.equal(s.productionTotals.bullets,50)
   g.open('warehouse');g.inventoryTab='ammo';labels.length=0;draw(g)
   assert.deepEqual(labels.filter(label=>label.endsWith('子弹')),['子弹'])
 })
 
-test('弹药旧工单按比例迁移到60秒，一名驻军也可按整条产线结算',()=>{
-  const s=ready(1),work=[{unitId:1,troops:1,type:'group'}]
+test('旧弹药工单保留进度，两名人员每轮产一发，矿石余量刷新后继续使用',()=>{
+  const s=ready(1),work=[{unitId:1,troops:2,type:'group'}]
   assert(stationTroops(s,1,[1]).ok);assert(placeVillageFacility(s,'armory',1).ok)
   assert(startProduction(s,[1],'bullets',1,work).ok)
-  const old=structuredClone(s);delete old.armoryClockVersion
+  const old=structuredClone(s);delete old.armoryClockVersion;delete old.bulletOreCredit;old.materials.ore=1
   old.armoryTasks={rifleAmmo:{...old.armoryTasks.bullets,product:'rifleAmmo',elapsed:225}}
   const restored=normalizeSave(old)
   assert.equal(restored.armoryTasks.bullets.elapsed,45);assert.deepEqual(normalizeSave(restored),restored)
   advanceFacilities(restored,14);assert.equal(restored.bullets,0)
-  advanceFacilities(restored,1);assert.equal(restored.bullets,100)
-  restored.materials.ore=4
-  assert.deepEqual(advanceFacilities(restored,60).produced,[{product:'bullets',amount:40}])
-  assert.equal(restored.materials.ore,0)
+  advanceFacilities(restored,1);assert.equal(restored.bullets,1);assert.equal(restored.materials.ore,0)
+  const reloaded=normalizeSave(restored);assert.deepEqual(reloaded,restored)
+  advanceFacilities(reloaded,540);assert.equal(reloaded.bullets,10);assert.equal(reloaded.bulletOreCredit,0)
+  assert.deepEqual(advanceFacilities(reloaded,60).produced,[])
+})
+
+test('子弹按人数可超过旧每分钟100发的上限',()=>{
+  const s=freshSave();s.troops=240;s.materials.ore=20
+  for(let i=0;i<6;i++)assert(setFormation(s,'platoon',40,null,{}).ok)
+  assert(startProduction(s,s.formations.map(unit=>unit.id),'bullets').ok)
+  assert.deepEqual(advanceFacilities(s,60).produced,[{product:'bullets',amount:120}])
+  assert.equal(s.materials.ore,8);assert.equal(s.bullets,120)
 })
 
 test('旧版武器工单按比例迁移，已是一分钟的弹药工单不再次缩短',()=>{
@@ -153,7 +161,7 @@ test('旧版武器工单按比例迁移，已是一分钟的弹药工单不再�
   const restored=normalizeSave(s)
   assert.equal(restored.armoryTasks.rifle.elapsed,45);assert.equal(restored.armoryTasks.bullets.elapsed,45)
   assert.deepEqual(normalizeSave(restored),restored)
-  assert.deepEqual(advanceFacilities(restored,15).produced,[{product:'rifle',amount:1},{product:'bullets',amount:100}])
+  assert.deepEqual(advanceFacilities(restored,15).produced,[{product:'rifle',amount:1},{product:'bullets',amount:5}])
 })
 
 test('旧版并行弹药工单保留派驻人数、产量记录与最接近完成的本轮进度',()=>{
@@ -169,19 +177,20 @@ test('旧版并行弹药工单保留派驻人数、产量记录与最接近完�
   assert.deepEqual(restored.armoryTasks,{bullets:{product:'bullets',unitIds:[1,2],workers:8,elapsed:45,villageId:1,allocations:[crew(1,5),crew(2,3)]}})
   assert.equal(restored.productionTotals.bullets,225)
   assert.deepEqual(normalizeSave(restored),restored)
-  assert.deepEqual(advanceFacilities(restored,15).produced,[{product:'bullets',amount:100}])
-  assert.equal(restored.bullets,100);assert.equal(restored.productionTotals.bullets,325)
+  assert.deepEqual(advanceFacilities(restored,15).produced,[{product:'bullets',amount:4}])
+  assert.equal(restored.bullets,4);assert.equal(restored.productionTotals.bullets,229)
 })
 
 test('同一驻军可分派不同人员并行生产，超派被拒绝，撤一项只释放该项人员',()=>{
-  const s=ready(1,12),allocation=troops=>[{unitId:1,troops,type:'group'}]
+  const s=freshSave(),allocation=troops=>[{unitId:1,troops,type:'group'}]
+  assert(setFormation(s,'platoon',25).ok);s.materials.ore=100;s.materials.wood=100
   assert(stationTroops(s,1,[1]).ok);assert(placeVillageFacility(s,'armory',1).ok)
-  assert(startProduction(s,[1],'rifle',1,allocation(7)).ok)
+  assert(startProduction(s,[1],'rifle',1,allocation(10)).ok)
   assert(startProduction(s,[1],'pistol',1,allocation(5)).ok)
-  assert.equal(startProduction(s,[1],'grenades',1,allocation(3)).ok,false)
-  assert.equal(availableWorkforce(s,1),0);assert.deepEqual(normalizeSave(s),s)
-  assert(recallFacility(s,'pistol'));assert.equal(availableWorkforce(s,1),5)
-  assert(startProduction(s,[1],'grenades',1,allocation(3)).ok);assert.equal(availableWorkforce(s,1),2)
+  assert.equal(startProduction(s,[1],'grenades',1,allocation(11)).ok,false)
+  assert.equal(availableWorkforce(s,1),10);assert.deepEqual(normalizeSave(s),s)
+  assert(recallFacility(s,'pistol'));assert.equal(availableWorkforce(s,1),15)
+  assert(startProduction(s,[1],'grenades',1,allocation(3)).ok);assert.equal(availableWorkforce(s,1),12)
   assert.deepEqual(advanceFacilities(s,60).produced,[{product:'rifle',amount:1},{product:'grenades',amount:1}])
 })
 
@@ -192,7 +201,7 @@ test('工厂可派无枪编制及合编，多选按总人数生产，占用全�
   assert.equal(formationActivity(s,1),'armory');assert.equal(formationActivity(s,root.id),'armory')
   assert.equal(advanceFacilities(s,300).produced[0].amount,13)
   assert.equal(startFarming(s,'help',0,'rice',[root.id]).ok,false)
-  assert.equal(createTraining(s,root.id),null);assert.equal(campaignDeployment(s,[root.id]).ok,false)
+  assert.equal(campaignDeployment(s,[root.id]).ok,false)
   assert.equal(unmergeFormation(s,root.id).ok,false);assert.equal(removeFormation(s,4),false)
   assert.equal(reinforceFormation(s,4,0,{},10,true).ok,false)
   assert(recallFacility(s,'grenades'));assert.equal(formationActivity(s,1),null)
@@ -225,12 +234,12 @@ test('恢复存档拒绝错误人数、重复名单和越界生产计时',()=>{
   assert.deepEqual(normalizeSave(s),s)
 })
 
-test('工厂、耕作、出战与训练互斥，其他空闲部队仍能工作',()=>{
+test('工厂、耕作和出战互斥，其他空闲部队仍能工作',()=>{
   const s=ready()
   assert(startFarming(s,'help',0,'rice',[1]).ok);assert.equal(startProduction(s,[1],'rifle').ok,false)
   const g=game(s);g.start('campaign',1,[3]);assert.equal(startProduction(s,[3],'pistol').ok,false)
   assert(startProduction(s,[4],'pistol').ok);assert.equal(campaignDeployment(s,[4]).ok,false)
-  assert.equal(createTraining(s,4),null);assert(recallFacility(s,'pistol'));assert(createTraining(s,4))
+  assert(recallFacility(s,'pistol'));assert(campaignDeployment(s,[4]).ok)
   cancelFarming(s);assert(startProduction(s,[1],'rifle').ok)
 })
 

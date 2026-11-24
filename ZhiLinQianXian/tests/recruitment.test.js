@@ -43,14 +43,14 @@ test('赠送食品独立转入动员储备，立即不增加兵力也不扣金�
   const before=JSON.stringify(s);assert.equal(donateFood(s,'rice',11).ok,false);assert.equal(JSON.stringify(s),before)
 })
 
-test('有粮每10秒批次报名5人，食品只扣一次，原部队、配发和训练记录保留',()=>{
-  const s=freshSave();assert(setFormation(s,'squad',9).ok);s.formations[0].trainingXp=5400;s.reserveTrainingXp=600;s.millet=20
+test('有粮每10秒批次报名5人，食品只扣一次，原部队和配发保留',()=>{
+  const s=freshSave();assert(setFormation(s,'squad',9).ok);s.millet=20
   const units=JSON.stringify(s.formations),weapons=JSON.stringify(s.weaponCounts),coins=s.coins
   assert(donateFood(s,'millet',20).ok);assert.equal(advanceLogistics(s,9.9).recruited,0);assert.equal(s.troops,120)
   assert.equal(advanceLogistics(s,.1).recruited,5);assert.equal(s.troops,125);assert.equal(s.mobilizationFood,15)
   assert.equal(advanceLogistics(s,30).recruited,15);assert.equal(s.troops,140);assert.equal(s.mobilizationFood,0)
   assert.equal(formation(s).unassignedTroops,131);assert.equal(s.recruitedTroops,20);assert.equal(s.recruitmentCount,4)
-  assert.equal(s.coins,coins);assert.equal(s.reserveTrainingXp,600)
+  assert.equal(s.coins,coins)
   assert.equal(JSON.stringify(s.formations),units);assert.equal(JSON.stringify(s.weaponCounts),weapons)
   assert.equal(mobilizationStatus(s),'缺粮报名中')
 })

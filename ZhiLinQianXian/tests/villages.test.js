@@ -1,10 +1,9 @@
-import {fitCamera} from '../js/world-map.js'
+import {fitCamera,mapField} from '../js/world-map.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {freshSave,normalizeSave,setFormation,mergeFormations,unmergeFormation,removeFormation,reinforceFormation,formation,splitGarrisonUnit} from '../js/state.js'
 import {stationTroops,recallGarrison,placeVillageFacility,transferArmory,villageOfFormation,villageUnits} from '../js/villages.js'
 import {farmTaskAt,formationActivity,startFarming} from '../js/base.js'
-import {startTrainingTask,cancelTrainingTask,trainingTaskAt} from '../js/training.js'
 import {startProduction} from '../js/facilities.js'
 import {campaignDeployment} from '../js/campaign.js'
 import {advanceEconomy} from '../js/economy.js'
@@ -54,19 +53,6 @@ test('驻村合编通过下属补员，上级汇总自动更新并可返回本�
   draw(g);click(g,'children-back');draw(g);click(g,'children-back');assert.equal(g.modal,'village');assert.deepEqual(s.garrisons[1],[parent.id])
 })
 
-test('各村只能训练本村驻军，多村训练并行，保存恢复后完成仍留驻原村',()=>{
-  const s=setup();stationTroops(s,1,[1,2]);stationTroops(s,2,[3]);s.cookedRice=100
-  assert.equal(startTrainingTask(s,3,1).ok,false);assert.equal(startTrainingTask(s,4,1).ok,false)
-  assert(startTrainingTask(s,1,1).ok);assert.equal(startTrainingTask(s,2,1).ok,false);assert(startTrainingTask(s,3,2).ok)
-  assert.equal(recallGarrison(s,1,1).ok,false);assert.equal(formationActivity(s,1),'training')
-  advanceEconomy(s,4);const loaded=normalizeSave(structuredClone(s));assert.deepEqual(loaded,s)
-  advanceEconomy(loaded,6);assert.equal(loaded.trainingSessions,2);assert.equal(loaded.formations[0].trainingXp,300);assert.equal(loaded.formations[2].trainingXp,300)
-  assert.equal(trainingTaskAt(loaded,1),undefined);assert.equal(trainingTaskAt(loaded,2),undefined)
-  assert.equal(villageOfFormation(loaded,1),1);assert.equal(villageOfFormation(loaded,3),2);assert.equal(formationActivity(loaded,1),'garrison')
-  advanceEconomy(loaded,10);assert.equal(loaded.trainingSessions,2)
-  assert(startTrainingTask(loaded,1,1).ok);assert(cancelTrainingTask(loaded,1));assert.equal(formationActivity(loaded,1),'garrison')
-})
-
 test('村庄可把正在工作的兵工厂迁到我方新村，工作部队随迁继续生产，未工作驻军留守',()=>{
   const s=setup(),g=game(s)
   assert(stationTroops(s,1,[1,3]).ok);assert(stationTroops(s,2,[2]).ok)
@@ -95,6 +81,26 @@ test('村庄可把正在工作的兵工厂迁到我方新村，工作部队随�
   assert.deepEqual(s.armoryTasks.rifle.unitIds,[2])
 })
 
+test('迁厂只带走实际派驻的工人，同一编制在原村的代耕和留守继续',()=>{
+  const s=setup(),field=mapField('field-1')
+  const crew=troops=>[{unitId:1,troops,type:'group'}]
+  assert(stationTroops(s,1,[1]).ok);assert(stationTroops(s,2,[2]).ok)
+  assert(placeVillageFacility(s,'armory',1).ok)
+  assert(startFarming(s,'help',0,field.crop,[1],field.id,crew(3)).ok)
+  assert(startProduction(s,[1],'pistol',1,crew(7)).ok)
+  advanceEconomy(s,20)
+  const fieldBefore=structuredClone(farmTaskAt(s,field.id))
+  assert(transferArmory(s,2).ok)
+  assert.deepEqual(farmTaskAt(s,field.id),fieldBefore)
+  assert.deepEqual(s.garrisons,{1:[1],2:[2]})
+  const restored=normalizeSave(s);assert.deepEqual(restored,s)
+  assert.equal(restored.armoryTasks.pistol.workers,7);assert.equal(restored.armoryTasks.pistol.elapsed,20)
+  advanceEconomy(restored,40);assert.equal(restored.productionTotals.pistol,1)
+  assert(transferArmory(restored,1).ok)
+  assert(!Object.hasOwn(restored.armoryTasks.pistol.allocations[0],'remote'))
+  assert.deepEqual(normalizeSave(restored),restored)
+})
+
 test('村庄可拆除正在工作的兵工厂，取消时保留工单，确认后释放人员',()=>{
   const s=setup(),g=game(s),oldWx=globalThis.wx
   let confirmation
@@ -113,43 +119,38 @@ test('村庄可拆除正在工作的兵工厂，取消时保留工单，确认�
   }finally{if(oldWx===undefined)delete globalThis.wx;else globalThis.wx=oldWx}
 })
 
-test('旧兵工厂首次选址保留人员、生产进度和其他训练任务',()=>{
-  const s=setup();s.cookedRice=100;assert(startProduction(s,[1],'pistol').ok);assert(startTrainingTask(s,3).ok)
+test('旧兵工厂首次选址保留人员和生产进度',()=>{
+  const s=setup();s.cookedRice=100;assert(startProduction(s,[1],'pistol').ok)
   advanceEconomy(s,3)
   assert(placeVillageFacility(s,'armory',4).ok)
-  assert.equal(s.armoryTasks.pistol.elapsed,3);assert.equal(s.trainingTask.elapsed,3)
+  assert.equal(s.armoryTasks.pistol.elapsed,3)
   assert.equal(villageOfFormation(s,1),4);assert.deepEqual(normalizeSave(s),s)
 })
 
-test('非法驻军及冲突存档不重复占兵，非法跨村训练和设施人员不能恢复',()=>{
+test('非法驻军及冲突存档不重复占兵，非法跨村设施人员不能恢复',()=>{
   const s=setup();s.garrisons={1:[1,1,999],2:[1,2]};s.facilityVillages={armory:1,medical:1}
   const loaded=normalizeSave(s);assert.deepEqual(loaded.garrisons,{1:[1],2:[2]});assert.deepEqual(loaded.facilityVillages,{armory:1})
-  assert(startTrainingTask(loaded,1,1).ok);const raw=structuredClone(loaded);raw.villageTrainingTasks[1].villageId=2
-  assert.deepEqual(normalizeSave(raw).villageTrainingTasks,{})
-  cancelTrainingTask(loaded,1);assert(startProduction(loaded,[1],'rifle',1).ok)
+  assert(startProduction(loaded,[1],'rifle',1).ok)
   const invalid=structuredClone(loaded);invalid.armoryTasks.rifle.unitIds=[2]
   assert.equal(normalizeSave(invalid).armoryTasks.rifle,undefined)
   const farm=setup();startFarming(farm,'help',0,'millet',[1]);farm.garrisons={1:[1]}
   const cleaned=normalizeSave(farm);assert(cleaned.farmTask);assert.deepEqual(cleaned.garrisons,{})
 })
 
-test('村庄训练、工厂和口粮的边界推进一致，饥饿暂停，训练结束不撤回驻军',()=>{
+test('兵工厂和口粮的边界推进一致，极度饥饿时暂停生产',()=>{
   const a=setup();a.cookedRice=100;stationTroops(a,1,[1]);stationTroops(a,2,[2]);stationTroops(a,3,[3]);placeVillageFacility(a,'armory',3)
-  startTrainingTask(a,1,1);startTrainingTask(a,2,2);startProduction(a,[3],'pistol',3)
+  startProduction(a,[3],'pistol',3)
   const b=structuredClone(a);advanceEconomy(a,300);for(let i=0;i<300;i++)advanceEconomy(b,1);assert.deepEqual(a,b)
-  assert.equal(a.trainingSessions,2);assert.equal(a.productionTotals.pistol,10)
-  startTrainingTask(a,1,1);a.hungerDebt=3;a.cookedRice=0;advanceEconomy(a,5);assert.equal(trainingTaskAt(a,1).elapsed,0)
-  a.cookedRice=13;advanceEconomy(a,10);assert.equal(a.trainingSessions,3);assert.equal(villageOfFormation(a,1),1)
+  assert.equal(a.productionTotals.pistol,10)
+  a.hungerDebt=3;a.cookedRice=0;advanceEconomy(a,5);assert.equal(a.armoryTasks.pistol.elapsed,0)
+  assert.equal(villageOfFormation(a,3),3)
 })
 
-test('地图进入村庄可滚动选择驻军、训练与选址，关闭事务返回本村，界面按钮不越界',()=>{
+test('地图进入村庄可滚动选择驻军与选址，关闭事务返回本村，界面按钮不越界',()=>{
   const g=game();g.openWorldMap();g.buttons=[];g.drawWorldMap();click(g,'map-site-1');assert.equal(g.modal,'village-station');draw(g)
   click(g,'station-unit-1');g.scrollRoster(g.rosterScroll.max);draw(g);click(g,'station-unit-5');click(g,'station-confirm')
   assert.equal(g.save.garrisons[1],undefined);g.updateMapMarches(10000);g.openVillage(1);assert.deepEqual(g.save.garrisons[1],[1,5]);assert.equal(g.modal,'village');draw(g)
-  click(g,'village-training');draw(g);assert(g.buttons.some(b=>b.id==='training-select-1'));assert.equal(g.buttons.some(b=>b.id==='training-select-2'),false)
-  click(g,'training-start');assert(trainingTaskAt(g.save,1));draw(g);click(g,'close');assert.equal(g.modal,'village');assert.equal(g.localVillage,1)
-  draw(g);click(g,'village-recall-1');assert(g.message.includes('请先结束'));assert.deepEqual(g.save.garrisons[1],[1,5])
-  click(g,'village-training');draw(g);click(g,'training-recall');draw(g);click(g,'close');draw(g)
+  assert(!g.buttons.some(button=>button.id==='village-training'))
   click(g,'village-armory');assert.equal(g.save.facilityVillages.armory,1);draw(g)
   assert(g.buttons.some(b=>b.id==='facility-unit-1'));assert.equal(g.buttons.some(b=>b.id==='facility-unit-2'),false)
   click(g,'facility-unit-1');draw(g);click(g,'facility-start');assert(g.save.armoryTasks.rifle);draw(g);click(g,'base-return');assert.equal(g.modal,'village')
@@ -210,12 +211,12 @@ test('多村同时报名共用总人数上限，其他村不白扣储备，满�
   assert.equal(advanceLogistics(loaded,20).recruited,0)
 })
 
-test('多村动员、共享代耕减耗、口粮与训练按相同边界推进，整段与逐秒结果一致',()=>{
+test('多村动员、共享代耕减耗和口粮按相同边界推进，整段与逐秒结果一致',()=>{
   const a=setup();a.cookedRice=1000;a.millet=100;a.mobilizationDiscounts=2
   donateFood(a,'millet',10,1);donateFood(a,'coins',15,2);setMobilizationActive(a,true,3)
-  startFarming(a,'help',2);stationTroops(a,4,[1]);startTrainingTask(a,1,4)
+  startFarming(a,'help',2);stationTroops(a,4,[1])
   const b=structuredClone(a);advanceEconomy(a,120,()=>.5);for(let i=0;i<120;i++)advanceEconomy(b,1,()=>.5)
-  assert.deepEqual(a,b);assert.equal(a.trainingSessions,1)
+  assert.deepEqual(a,b)
   assert(mobilizationRecord(a,1).recruitedTroops>0);assert(mobilizationRecord(a,2).recruitedTroops>0);assert(mobilizationRecord(a,3).recruitedTroops>0)
   assert.deepEqual(normalizeSave(structuredClone(a)),a)
 })

@@ -1,17 +1,50 @@
 import {OCCUPIABLE_SITES,mapRegion} from './world-map.js'
-import {detachGarrison,formationRoots,recallToStandby,syncIdleBranches} from './state.js'
+import {FORMATION_TYPES,detachGarrison,formationRoots,recallToStandby,syncIdleBranches} from './state.js'
 import {formationActivity} from './base.js'
 import {campaignDeployment} from './campaign.js'
 import {weaponById} from './weapons.js'
 import {RECRUITMENT} from './logistics.js'
 import {villageUnits,villageLocalUnits,recallGarrison,evacuateVillage} from './villages.js'
 
-function initialEnemies(site){
-  if(site.type==='city')return [{name:'敌1'+({regiment:'团',brigade:'旅',division:'师',army:'军'})[site.enemyType],type:site.enemyType,weapon:'rifle',troops:site.enemyTroops}]
-  const count=Math.ceil(site.enemyTroops/12)
-  return Array.from({length:count},(_,i)=>({name:`敌${i+1}班`,type:'squad',weapon:i%3===2?'machinegun':'rifle',troops:Math.floor(site.enemyTroops/count)+(i<site.enemyTroops%count?1:0)}))
+function initialEnemies(site,troops=site.enemyTroops){
+  if(!troops)return []
+  if(site.type==='city'){
+    const kind=FORMATION_TYPES.find(kind=>kind.id===site.enemyType)
+    return [{name:'敌1'+kind.name,type:kind.id,weapon:'rifle',troops}]
+  }
+  const count=Math.ceil(troops/12)
+  return Array.from({length:count},(_,i)=>({name:`敌${i+1}班`,type:'squad',weapon:i%3===2?'machinegun':'rifle',troops:Math.floor(troops/count)+(i<troops%count?1:0)}))
 }
 export const freshRegions=()=>({mapRegions:Object.fromEntries(OCCUPIABLE_SITES.map(site=>[site.id,{enemies:initialEnemies(site),garrisonIds:[]}]))})
+export function generateStartingRegions(random){
+  const mapRegions=Object.fromEntries(OCCUPIABLE_SITES.map(site=>[site.id,{enemies:[],garrisonIds:[]}]))
+  const roll=(min,max)=>min+Math.floor(random()*(max-min+1))
+  const coreVillages=OCCUPIABLE_SITES.filter(site=>!site.strategic)
+  const strategicSites=type=>OCCUPIABLE_SITES.filter(site=>site.strategic&&site.type===type)
+  const groups=[
+    [coreVillages,roll(2,3)],
+    ...['village','mountain','forest','river','city'].map(type=>{
+      const sites=strategicSites(type)
+      const [min,max]=type==='city'?[.7,.9]:[.45,.65]
+      return [sites,roll(Math.ceil(sites.length*min),Math.floor(sites.length*max))]
+    })
+  ]
+  for(const [sites,count] of groups){
+    for(let i=0;i<count;i++){
+      const index=roll(i,sites.length-1)
+      const site=sites[index]
+      sites[index]=sites[i]
+      if(site.type==='city'){
+        const kind=FORMATION_TYPES.find(kind=>kind.id===site.enemyType)
+        const min=Math.max(kind.min,Math.ceil(site.enemyTroops*.75)),max=Math.min(kind.max,Math.floor(site.enemyTroops*1.25))
+        mapRegions[site.id].enemies=initialEnemies(site,roll(min,max))
+      }else{
+        mapRegions[site.id].enemies=initialEnemies(site,site.strategic?roll(12,96):roll(7,30))
+      }
+    }
+  }
+  return {mapRegions}
+}
 export const regionRecord=(s,id)=>s.mapRegions?.[id]
 // 外围村庄的驻军就是该村的村庄驻军（s.garrisons），其余据点仍用地区驻防记录。
 export const regionUnits=(s,id)=>{const villageId=mapRegion(id)?.villageId;return villageId?villageUnits(s,villageId):formationRoots(s).filter(u=>(regionRecord(s,id)?.garrisonIds||[]).includes(u.id))}
@@ -23,15 +56,22 @@ export function regionLocalUnits(s,id){
 }
 export const regionEnemyTroops=(s,id)=>(regionRecord(s,id)?.enemies||[]).reduce((sum,u)=>sum+u.troops,0)
 export const regionOwner=(s,id)=>regionEnemyTroops(s,id)>0?'enemy':(s.baseVillageId!=null&&mapRegion(id)?.villageId===s.baseVillageId)||regionUnits(s,id).length?'player':'neutral'
+export function normalizeEnemyUnits(units,city=false){
+  if(!Array.isArray(units))return []
+  const types=city?['regiment','brigade','division','army']:['squad','platoon','company','battalion','regiment','brigade','division','army']
+  return units.slice(0,12).filter(unit=>unit&&Number.isSafeInteger(unit.troops)&&unit.troops>0&&unit.troops<=RECRUITMENT.troopLimit&&types.includes(unit.type)&&weaponById(unit.weapon).id===unit.weapon)
+    .map((unit,index)=>({name:typeof unit.name==='string'?Array.from(unit.name).slice(0,16).join(''):`敌${index+1}部队`,type:unit.type,weapon:unit.weapon,troops:unit.troops}))
+}
 export function normalizeRegions(s,raw){
   Object.assign(s,freshRegions())
   const roots=formationRoots(s),taken=new Set(Object.values(s.garrisons||{}).flat())
   for(const site of OCCUPIABLE_SITES){
     const old=raw?.mapRegions?.[site.id],record=s.mapRegions[site.id]
     if(!old||typeof old!=='object')continue
-    if(Array.isArray(old.enemies))record.enemies=old.enemies.slice(0,12).filter(u=>u&&Number.isSafeInteger(u.troops)&&u.troops>0&&u.troops<=RECRUITMENT.troopLimit&&(site.type==='city'?['regiment','brigade','division','army']:['squad','platoon','company','battalion','regiment','brigade','division','army']).includes(u.type)&&weaponById(u.weapon).id===u.weapon).map((u,i)=>({name:typeof u.name==='string'?Array.from(u.name).slice(0,16).join(''):`敌${i+1}部队`,type:u.type,weapon:u.weapon,troops:u.troops}))
+    if(Array.isArray(old.enemies))record.enemies=normalizeEnemyUnits(old.enemies,site.type==='city')
     if(record.enemies.length){
-      if(site.villageId&&s.garrisons[site.villageId]?.length)evacuateVillage(s,site.villageId)
+      const villageId=site.villageId
+      if(villageId&&(s.garrisons[villageId]?.length||s.facilityVillages.armory===villageId))evacuateVillage(s,villageId)
       continue
     }
     if(!Array.isArray(old.garrisonIds))continue

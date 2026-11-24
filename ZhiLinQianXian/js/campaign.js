@@ -1,12 +1,10 @@
 import { Battle } from './battle.js'
 import { formationRoots, formationName,FORMATION_TYPES } from './state.js'
-import { trainedCombatGroups } from './training.js'
 import { WEAPONS,weaponById } from './weapons.js'
 import { formationActivity,activityLabel } from './base.js'
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const MELEE={id:'melee',range:34,interval:.65,damage:.42}
-const MELEE_EXPOSURE=.5
 function nearestEnemy(unit,enemies,range=Infinity){
   let target=null,best=range
   for(const enemy of enemies){
@@ -16,7 +14,7 @@ function nearestEnemy(unit,enemies,range=Infinity){
   }
   return target
 }
-const shareCounts=(weights,total)=>{
+export const shareCounts=(weights,total)=>{
   const sum=weights.reduce((a,b)=>a+b,0),shares=weights.map(n=>sum?n*total/sum:0),counts=shares.map(Math.floor)
   const order=shares.map((n,i)=>({i,r:n-counts[i]})).sort((a,b)=>b.r-a.r||a.i-b.i)
   for(let i=0,left=total-counts.reduce((a,b)=>a+b,0);i<left;i++)counts[order[i].i]++
@@ -32,6 +30,12 @@ export function enemyUnitSpec(level,wave,index){
   return {type:kind.type,name:`敌${index+1}${kind.name}`,troops,weapon}
 }
 
+function enemyWaveTroops(level,wave,first,count){
+  let troops=0
+  for(let i=0;i<count;i++)troops+=enemyUnitSpec(level,wave,first+i).troops
+  return troops
+}
+
 // 每个独立编制对应一个战斗单位，合编部队的下属只汇总一次。
 export function campaignDeployment(save, ids, ignoreGarrison=false) {
   if (!Array.isArray(ids) || !ids.length) return {ok:false,message:'请至少选择一支出战部队'}
@@ -42,28 +46,38 @@ export function campaignDeployment(save, ids, ignoreGarrison=false) {
     if (!unit) return {ok:false,message:'只能派遣独立部队，请重新选择'}
     const activity=formationActivity(save,id,ignoreGarrison)
     if(activity)return {ok:false,message:`${formationName(unit)}${activityLabel(activity)}，归队后才能出战`}
-    const groups = trainedCombatGroups(save, id)
-    const unarmed=unit.troops-groups.reduce((sum,group)=>sum+group.troops,0)
-    if(unarmed>0)groups.push({weapon:null,troops:unarmed,trainingBonus:0})
+    const groups=combatGroups(unit.weapons,unit.troops)
     units.push({id,type:unit.type,name:formationName(unit),troops:unit.troops,groups})
   }
   return {ok:true,units,troops:units.reduce((sum, unit) => sum + unit.troops, 0)}
 }
+
+export function combatGroups(weapons,troops=0){
+  const groups=WEAPONS.filter(weapon=>weapons[weapon.id]>0).map(weapon=>({weapon:weapon.id,troops:weapons[weapon.id]}))
+  const unarmed=troops-groups.reduce((sum,group)=>sum+group.troops,0)
+  if(unarmed>0)groups.push({weapon:null,troops:unarmed})
+  return groups
+}
+
+function battleActor(unit,x,y){
+  return {id:unit.id,rootId:unit.id,type:unit.type||'squad',name:unit.name,maxHp:unit.troops,hp:unit.troops,x,y,target:{x,y},
+    groups:unit.groups.map(group=>({...group,weapon:group.weapon===null?null:weaponById(group.weapon),cool:.2}))}
+}
+const armedCount=roster=>roster.reduce((total,unit)=>total+unit.groups.reduce((sum,group)=>sum+(group.weapon===null?0:group.troops),0),0)
 
 export class CampaignBattle extends Battle {
   constructor(level, roster, regionEnemies=null, ammoStock=null) {
     const troops = roster.reduce((sum, unit) => sum + unit.troops, 0)
     super('campaign', level, troops)
     this.ammoStock=ammoStock;this.ammoSpent=0
-    this.enemyDamageMultiplier=1;this.enemyIntervalMultiplier=1;this.enemyLargeUnitDamage=0
-    this.armedTroops=roster.reduce((total,unit)=>total+unit.groups.reduce((sum,group)=>sum+(group.weapon===null?0:group.troops),0),0)
+    this.enemyIntervalMultiplier=1
+    this.armedTroops=armedCount(roster)
     const columns = Math.max(1, Math.ceil(Math.sqrt(roster.length / 2)))
     const rows = Math.ceil(roster.length / columns)
     this.units = roster.map((unit, i) => {
       const x = roster.length === 1 ? 340 : columns === 1 ? 280 : 150 + (i % columns) * 300 / (columns - 1)
       const y = rows === 1 ? 405 : 215 + Math.floor(i / columns) * 360 / (rows - 1)
-      return {id:unit.id,rootId:unit.id,type:unit.type||'squad',name:unit.name,maxHp:unit.troops,hp:unit.troops,x,y,target:{x,y},
-        groups:unit.groups.map(group => ({...group,weapon:group.weapon===null?null:weaponById(group.weapon),cool:.2}))}
+      return battleActor(unit,x,y)
     })
     this.selectedUnitId = null
     this.enemySequence = 0
@@ -73,18 +87,47 @@ export class CampaignBattle extends Battle {
     this.combatReady = true
     this.detachmentSequence=0;this.casualties={}
     if(regionEnemies){this.regionEnemyQueue=regionEnemies.map(u=>({...u}));this.goal=1;this.pending=this.regionEnemyQueue.length}
+    this.enemyTroops=regionEnemies?regionEnemies.reduce((sum,unit)=>sum+unit.troops,0):enemyWaveTroops(level,this.wave,0,this.pending)
+  }
+  reinforce(roster){
+    const rows=Math.min(roster.length,7)
+    roster.forEach((unit,index)=>{
+      const x=Math.min(275,90+Math.floor(index/7)*55)
+      const y=rows===1?405:215+(index%7)*360/(rows-1)
+      this.units.push(battleActor(unit,x,y))
+      this.maxHp+=unit.troops
+    })
+    this.armedTroops+=armedCount(roster)
+    this.syncHealth()
   }
   recordLosses(unit){
     const total=unit.groups.reduce((sum,group)=>sum+group.troops,0),survivors=Math.min(total,Math.max(0,Math.ceil(unit.hp)))
     if(survivors===total)return
     const counts=shareCounts(unit.groups.map(group=>group.troops),survivors)
-    const losses=this.casualties[unit.rootId]??=Object.fromEntries(WEAPONS.map(w=>[w.id,0]))
     unit.groups.forEach((group,i)=>{
-      const key=group.weapon?.id||'unarmed'
-      losses[key]=(losses[key]||0)+group.troops-counts[i];group.troops=counts[i]
+      this.recordGroupLoss(unit,group,group.troops-counts[i]);group.troops=counts[i]
     })
     unit.groups=unit.groups.filter(group=>group.troops>0)
     if(survivors>0)unit.maxHp=survivors
+  }
+  recordGroupLoss(unit,group,count){
+    if(!count)return
+    const losses=this.casualties[unit.rootId]??=Object.fromEntries(WEAPONS.map(w=>[w.id,0]))
+    const key=group.weapon?.id||'unarmed'
+    losses[key]=(losses[key]||0)+count
+    if(group.production)(this.productionLosses??=[]).push({product:group.production,unitId:unit.rootId,count})
+  }
+  loseRemainingFactoryWorkers(){
+    for(const unit of this.units){
+      this.recordLosses(unit)
+      unit.groups=unit.groups.filter(group=>{
+        if(!group.production)return true
+        this.recordGroupLoss(unit,group,group.troops)
+        unit.hp=Math.max(0,unit.hp-group.troops)
+        return false
+      })
+    }
+    this.syncHealth()
   }
   collectLosses(includeSurvivors=false){
     for(const unit of this.units)if(includeSurvivors||unit.hp<=0)this.recordLosses(unit)
@@ -119,7 +162,7 @@ export class CampaignBattle extends Battle {
     const total=unit.groups.reduce((sum,g)=>sum+g.troops,0)+parent.groups.reduce((sum,g)=>sum+g.troops,0)
     parent.hp=total;parent.maxHp=total
     for(const incoming of unit.groups){
-      const group=parent.groups.find(group=>group.weapon?.id===incoming.weapon?.id&&group.trainingBonus===incoming.trainingBonus)
+      const group=parent.groups.find(group=>group.weapon?.id===incoming.weapon?.id&&group.production===incoming.production)
       if(group)group.troops+=incoming.troops
       else parent.groups.push({...incoming})
     }
@@ -165,6 +208,51 @@ export class CampaignBattle extends Battle {
   meleeTroops(unit){
     return unit.groups.reduce((count,group)=>count+(this.canFire(group)?0:group.troops),0)
   }
+  fireGroup(unit,group,weapon,opponents,hostile=false,hp=unit.hp){
+    let target=nearestEnemy(unit,opponents,weapon.range)
+    if(!target)return false
+
+    const ammo=!hostile&&weapon!==MELEE?this.ammoStock:null
+    const damageMultiplier=hostile?1:this.damageMultiplier
+    const strength=hp/unit.maxHp
+    const drawShot=aim=>this.shots.push({x:unit.x+(hostile?0:15),y:unit.y-(hostile?0:5),tx:aim.x,ty:aim.y,life:weapon.splash ? .25 : .12,hostile,kind:weapon.id})
+    const spend=rounds=>{
+      if(!ammo)return
+      ammo[weapon.ammo]-=rounds
+      this.ammoSpent+=rounds
+    }
+    if(weapon.damagePerRound){
+      const ready=Math.ceil(group.troops*strength*damageMultiplier)
+      let rounds=Math.min(ready,ammo?ammo[weapon.ammo]:ready)
+      while(rounds>0&&target){
+        const fired=Math.min(rounds,Math.ceil(target.hp/weapon.damagePerRound))
+        target.hp=Math.max(0,target.hp-fired*weapon.damagePerRound)
+        rounds-=fired
+        spend(fired)
+        drawShot(target)
+        if(rounds>0)target=nearestEnemy(unit,opponents,weapon.range)
+      }
+      return true
+    }
+
+    let firingShare=1
+    if(ammo){
+      const shooters=Math.ceil(group.troops*strength)
+      const used=Math.min(shooters,ammo[weapon.ammo])
+      spend(used)
+      firingShare=used/shooters
+    }
+    const baseStrength=hostile?this.enemyTroops:weapon===MELEE?this.maxHp:this.armedTroops
+    const damage=(7+baseStrength*.025)*weapon.damage*(group.troops/baseStrength)*strength*firingShare*damageMultiplier
+    if(weapon.splash){
+      for(const opponent of opponents){
+        if(opponent.hp>0&&Math.hypot(opponent.x-target.x,opponent.y-target.y)<=weapon.splash)opponent.hp=Math.max(0,opponent.hp-damage)
+      }
+      if(this.bursts.length<32)this.bursts.push({x:target.x,y:target.y,life:.4,radius:weapon.splash})
+    }else target.hp=Math.max(0,target.hp-damage)
+    drawShot(target)
+    return true
+  }
   update(dt) {
     if (this.done || !Number.isFinite(dt) || dt <= 0) return
     this.time += dt
@@ -197,69 +285,36 @@ export class CampaignBattle extends Battle {
       this.enemies.push({...spec,x:1340,y:195 + Math.random() * 380,hp:spec.troops,maxHp:spec.troops,cool:.7 + Math.random()})
       this.pending--; this.spawn = Math.max(.45, 1.3 - this.wave * .045)
     }
-    for (const unit of this.units) {
-      if (unit.hp <= 0) continue
-      for (const group of unit.groups) {
+    const openingExchange=this.autoRaidExchange?new Map(this.enemies.filter(enemy=>enemy.hp>0&&!enemy.hasFired).map(enemy=>[enemy,enemy.hp])):null
+    for(const unit of this.units){
+      if(unit.hp<=0)continue
+      for(const group of unit.groups){
         if(this.combatReady===false)continue
-        group.cool -= dt
+        group.cool-=dt
         if(group.cool>0)continue
-        const ranged=this.canFire(group),weapon=ranged?group.weapon:MELEE
-        const target=nearestEnemy(unit,this.enemies,weapon.range)
-        if(!target)continue
-        const strength=Math.max(0,unit.hp)/unit.maxHp
-        const shooters=Math.ceil(group.troops*strength)
-        if(ranged&&weapon.damagePerRound){
-          const readyShooters=Math.ceil(group.troops*strength*this.damageMultiplier)
-          let rounds=Math.min(readyShooters,this.ammoStock?this.ammoStock[weapon.ammo]:readyShooters)
-          let aim=target
-          while(rounds>0&&aim){
-            const fired=Math.min(rounds,Math.ceil(aim.hp/weapon.damagePerRound))
-            aim.hp-=fired*weapon.damagePerRound
-            rounds-=fired
-            if(this.ammoStock){this.ammoStock[weapon.ammo]-=fired;this.ammoSpent+=fired}
-            this.shots.push({x:unit.x+15,y:unit.y-5,tx:aim.x,ty:aim.y,life:.12,hostile:false,kind:weapon.id})
-            if(rounds>0)aim=nearestEnemy(unit,this.enemies,weapon.range)
-          }
-          group.cool=weapon.interval*this.intervalMultiplier/(1+(group.trainingBonus||0))
-          continue
+        const weapon=this.canFire(group)?group.weapon:MELEE
+        if(this.fireGroup(unit,group,weapon,this.enemies)){
+          group.cool=weapon.interval*this.intervalMultiplier
         }
-        let firingShare=1
-        if(ranged&&this.ammoStock){
-          const used=Math.min(shooters,this.ammoStock[weapon.ammo])
-          this.ammoStock[weapon.ammo]-=used;this.ammoSpent+=used
-          firingShare=used/shooters
-        }
-        const baseStrength=ranged?this.armedTroops:this.maxHp
-        const damage=(7+baseStrength*.025)*weapon.damage*(group.troops/baseStrength)*strength*firingShare*(1+(group.trainingBonus||0))*this.damageMultiplier
-        group.cool = weapon.interval*this.intervalMultiplier
-        if (weapon.splash) {
-          for (const enemy of this.enemies) if (enemy.hp > 0 && Math.hypot(enemy.x - target.x, enemy.y - target.y) <= weapon.splash) enemy.hp -= damage
-          if (this.bursts.length < 32) this.bursts.push({x:target.x,y:target.y,life:.4,radius:weapon.splash})
-        } else target.hp -= damage
-        this.shots.push({x:unit.x + 15,y:unit.y - 5,tx:target.x,ty:target.y,life:weapon.splash ? .25 : .12,hostile:false,kind:weapon.id})
       }
     }
-    const alive = this.units.filter(unit => unit.hp > 0)
-    for (const enemy of this.enemies) {
-      if (enemy.hp <= 0) continue
-      let target = null, distance = Infinity
-      for (const unit of alive) {
-        if (unit.hp <= 0) continue
-        const d = Math.hypot(unit.x - enemy.x, unit.y - enemy.y)
-        if (d < distance) { distance = d; target = unit }
-      }
-      if (!target) break
-      const dx = target.x - enemy.x, dy = target.y - enemy.y, d = distance || 1
+    const alive=this.units.filter(unit=>unit.hp>0)
+    for(const enemy of this.enemies){
+      const returnFire=enemy.hp<=0&&openingExchange?.get(enemy)
+      if(enemy.hp<=0&&!returnFire)continue
+      const target=nearestEnemy(enemy,alive)
+      if(!target)break
+      const dx=target.x-enemy.x,dy=target.y-enemy.y,distance=Math.hypot(dx,dy)
       const weapon=weaponById(enemy.weapon||'rifle')
-      if (distance > Math.min(330,weapon.range*.7)) {enemy.x += dx / d * 55 * dt; enemy.y += dy / d * 42 * dt}
-      enemy.cool -= dt
-      if (distance < weapon.range && enemy.cool <= 0) {
-        enemy.cool = Math.max(.6,weapon.interval*4)*this.enemyIntervalMultiplier
-        const meleeShare=this.meleeTroops(target)/target.groups.reduce((total,group)=>total+group.troops,0)
-        const enemyFirepower=1.2+Math.min(80,enemy.maxHp)*.09+Math.max(0,enemy.hp-80)*this.enemyLargeUnitDamage
-        const damage=enemyFirepower*weapon.damage*this.enemyDamageMultiplier*(1+MELEE_EXPOSURE*meleeShare)
-        target.hp = Math.max(0, target.hp - damage)
-        this.shots.push({x:enemy.x,y:enemy.y,tx:target.x,ty:target.y,life:.15,hostile:true,kind:weapon.id})
+      if(!returnFire&&distance>Math.min(330,weapon.range*.7)){
+        enemy.x+=dx/distance*55*dt
+        enemy.y+=dy/distance*42*dt
+      }
+      enemy.cool-=dt
+      if(distance>=weapon.range||enemy.cool>0&&!returnFire)continue
+      if(this.fireGroup(enemy,{troops:enemy.maxHp},weapon,alive,true,returnFire||enemy.hp)){
+        enemy.hasFired=true
+        enemy.cool=Math.max(.6,weapon.interval*4)*this.enemyIntervalMultiplier
       }
     }
     this.enemies = this.enemies.filter(enemy => {
@@ -284,6 +339,7 @@ export class CampaignBattle extends Battle {
         if (this.wave >= this.goal) {this.done = true; this.won = true}
         else {
           this.wave++; this.pending = this.count(); this.breather = 0; this.spawn = 1
+          this.enemyTroops=enemyWaveTroops(this.level,this.wave,this.enemySequence,this.pending)
           this.syncHealth()
         }
       }

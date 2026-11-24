@@ -2,29 +2,41 @@ import {formationActivity} from './base.js'
 import {hungerStatus} from './logistics.js'
 import {isVillage,unitVillage,villageRegionId} from './villages.js'
 import {detachGarrison,garrisonSite,lineageRows,recallToStandby} from './state.js'
-import {PROJECT_UNIT_LIMIT,removeTaskUnit,validateAllocations} from './workforce.js'
+import {reduceTaskWorkers,removeTaskUnit,validateAllocations} from './workforce.js'
 import {MATERIAL_LIMIT} from './gathering.js'
 import {LEGACY_BULLET_IDS,restoreBulletCount} from './weapons.js'
 
 export const FACILITY_INTERVAL=60
 const LEGACY_ARMORY_INTERVAL=300
 const ARMORY_CLOCK_VERSION=2
+const BULLETS_PER_ORE=10
 export const PRODUCTS=[
-  {id:'rifle',name:'步枪',unit:'把',workers:7,recipe:{ore:10,wood:5}},
+  {id:'rifle',name:'步枪',unit:'把',workers:10,recipe:{ore:10,wood:5}},
   {id:'pistol',name:'手枪',unit:'把',workers:5,recipe:{ore:5,wood:2}},
   {id:'grenades',name:'手雷',unit:'枚',workers:3,recipe:{ore:5}},
-  {id:'bullets',name:'子弹',unit:'发',workers:1,batchSize:10,batchesPerCycle:10,recipe:{ore:1}},
+  {id:'bullets',name:'子弹',unit:'发',workers:2,recipe:{ore:1},recipeQuantity:BULLETS_PER_ORE},
 ]
 const bounded=value=>Number.isFinite(value)?Math.max(0,Math.min(MATERIAL_LIMIT,Math.floor(value))):0
-export const freshFacilities=()=>({armoryTasks:{},armoryClockVersion:ARMORY_CLOCK_VERSION,productionTotals:Object.fromEntries(PRODUCTS.map(product=>[product.id,0]))})
+export const freshFacilities=()=>({armoryTasks:{},armoryClockVersion:ARMORY_CLOCK_VERSION,bulletOreCredit:0,productionTotals:Object.fromEntries(PRODUCTS.map(product=>[product.id,0]))})
 const armoryProducts=new Map(PRODUCTS.map(product=>[product.id,product]))
 const productionStock=(s,product)=>product.unit==='把'?s.weaponCounts:s
 export const productionInventory=(s,product)=>productionStock(s,product)[product.id]
+export function productionMaterialLimit(s,product){
+  if(product.id==='bullets')return s.materials.ore*BULLETS_PER_ORE+s.bulletOreCredit
+  return Math.min(...Object.entries(product.recipe).map(([id,cost])=>Math.floor(s.materials[id]/cost)))
+}
 export function productionCapacity(s,product,workers){
-  const batchSize=product.batchSize||1
-  const staffed=workers>=product.workers?(product.batchesPerCycle??Math.floor(workers/product.workers)):0
-  const batches=Math.min(Math.floor((MATERIAL_LIMIT-productionInventory(s,product))/batchSize),staffed,...Object.entries(product.recipe).map(([id,cost])=>Math.floor(s.materials[id]/cost)))
-  return Math.max(0,batches)*batchSize
+  return Math.max(0,Math.min(Math.floor(workers/product.workers),productionMaterialLimit(s,product),MATERIAL_LIMIT-productionInventory(s,product)))
+}
+function consumeProductionMaterials(s,product,amount){
+  if(product.id==='bullets'){
+    // 每份矿石可制作十发，余量跨生产轮次保存。
+    const ore=Math.max(0,Math.ceil((amount-s.bulletOreCredit)/BULLETS_PER_ORE))
+    s.materials.ore-=ore
+    s.bulletOreCredit+=ore*BULLETS_PER_ORE-amount
+    return
+  }
+  for(const [id,cost] of Object.entries(product.recipe))s.materials[id]-=cost*amount
 }
 function validateWorkers(s,ids,villageId=null){
   if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)return {ok:false,message:'请至少选择一支不同的独立部队'}
@@ -52,6 +64,7 @@ function mergeBulletWork(s,current,task){
 export function normalizeFacilities(s,raw){
   const clean=freshFacilities()
   Object.assign(s,clean)
+  clean.bulletOreCredit=Math.min(BULLETS_PER_ORE-1,bounded(raw?.bulletOreCredit))
   for(const product of PRODUCTS)clean.productionTotals[product.id]=bounded(raw?.productionTotals?.[product.id])
   clean.productionTotals.bullets=restoreBulletCount(raw?.productionTotals)
   const restore=(task,product,savedInterval)=>{
@@ -83,10 +96,7 @@ export function startProduction(s,ids,productId,villageId=s.facilityVillages?.ar
   if(!product)return {ok:false,message:'请选择有效的生产项目'}
   const id=product.id,current=s.armoryTasks[id]
   if(villageId!==(s.facilityVillages?.armory||null))return {ok:false,message:'请在兵工厂所在村庄安排生产'}
-  if(Array.isArray(ids)){
-    if(ids.some(id=>current?.unitIds.includes(id)))return {ok:false,message:'这支部队已在本产线工作'}
-    if((current?.unitIds.length??0)+ids.length>PROJECT_UNIT_LIMIT)return {ok:false,message:`每条产线最多派 ${PROJECT_UNIT_LIMIT} 支部队`}
-  }
+  if(current&&Array.isArray(ids)&&ids.some(id=>current.unitIds.includes(id)))return {ok:false,message:'这支部队已在本产线工作'}
   const check=allocations!==null?validateAllocations(s,villageId,allocations,ids):validateWorkers(s,ids,villageId)
   if(!check.ok)return check
   if(!current&&check.workers<product.workers)return {ok:false,message:`生产${product.name}至少需要${product.workers}人`}
@@ -124,19 +134,38 @@ export function recallFacility(s,kind,unitId=null){
   }
   return true
 }
+export function applyProductionLosses(s,losses){
+  const totals=new Map()
+  for(const {product,unitId,count} of losses){
+    const key=`${product}:${unitId}`,entry=totals.get(key)
+    if(entry)entry.count+=count
+    else totals.set(key,{product,unitId,count})
+  }
+  for(const {product,unitId,count} of totals.values()){
+    const task=s.armoryTasks[product]
+    if(!task||!reduceTaskWorkers(s,task,unitId,count))continue
+    if(!task.unitIds.length)delete s.armoryTasks[product]
+    else if(task.cycleWorkers!==undefined&&task.cycleWorkers<armoryProducts.get(product).workers){
+      task.elapsed=0;delete task.cycleWorkers
+    }
+  }
+}
 export function facilityRunning(s,kind){
   const task=s.armoryTasks[kind],product=armoryProducts.get(kind)
   return !!task&&!!product&&productionCapacity(s,product,task.cycleWorkers??task.workers)>0
 }
 export function nextFacilityEvent(s){
-  return Math.min(...PRODUCTS.filter(product=>facilityRunning(s,product.id)).map(product=>FACILITY_INTERVAL-s.armoryTasks[product.id].elapsed),Infinity)
+  return Math.min(...activeProduction(s).map(product=>FACILITY_INTERVAL-s.armoryTasks[product.id].elapsed),Infinity)
+}
+function activeProduction(s){
+  return PRODUCTS.filter(product=>facilityRunning(s,product.id))
 }
 export function advanceFacilities(s,seconds,canWork=!hungerStatus(s).disabled){
   const result={produced:[]}
   if(!canWork||!Number.isFinite(seconds)||seconds<=0)return result
   let remaining=seconds
   while(remaining>0){
-    const active=PRODUCTS.filter(product=>facilityRunning(s,product.id))
+    const active=activeProduction(s)
     if(!active.length)break
     const step=Math.min(remaining,...active.map(product=>FACILITY_INTERVAL-s.armoryTasks[product.id].elapsed))
     for(const product of active)s.armoryTasks[product.id].elapsed+=step
@@ -148,7 +177,7 @@ export function advanceFacilities(s,seconds,canWork=!hungerStatus(s).disabled){
       delete task.cycleWorkers
       if(!amount)continue
       const stock=productionStock(s,product)
-      for(const [id,cost] of Object.entries(product.recipe))s.materials[id]-=cost*(amount/(product.batchSize||1))
+      consumeProductionMaterials(s,product,amount)
       stock[product.id]+=amount
       s.productionTotals[product.id]=Math.min(MATERIAL_LIMIT,s.productionTotals[product.id]+amount)
       result.produced.push({product:product.id,amount})

@@ -33,8 +33,8 @@ test('送粮动员和缺粮慢速报名都不再赠送乡亲物资，不额外�
   const slow=advanceLogistics(s,20);assert.equal(slow.recruited,5);assert.deepEqual(slow.supplies,{});assert.equal(s.villageSuppliesReceived,0)
 })
 
-test('代耕按人数分粮；保留报名5人和减耗，编制与经验不变',()=>{
-  const s=freshSave();setFormation(s,'squad',7);s.formations[0].trainingXp=420;const units=JSON.stringify(s.formations)
+test('代耕按人数分粮；保留报名5人和减耗，编制保留',()=>{
+  const s=freshSave();setFormation(s,'squad',7);const units=JSON.stringify(s.formations)
   assert(startFarming(s,'help',0,'millet',[1]).ok);assert.equal(advanceFarming(s,59.9),null)
   const saved=normalizeSave(JSON.parse(JSON.stringify(s))),result=advanceFarming(saved,.1,true,()=>0)
   assert.equal(result.recruited,5);assert.equal(saved.troops,125);assert.equal(saved.recruitedTroops,5);assert.equal(saved.mobilizationDiscounts,7)

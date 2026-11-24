@@ -8,7 +8,7 @@ import {advanceEconomy} from '../js/economy.js'
 import {MAP_FIELDS,mapLocation} from '../js/world-map.js'
 import {farmTravelPosition,farmRouteLength,FARM_TRAVEL_SPEED} from '../js/farm-travel.js'
 const field=MAP_FIELDS.find(f=>f.villageId===1)
-function setup(){const s=freshSave();s.cookedRice=100;setFormation(s,'platoon',40);s.formations[0].trainingXp=2400;stationTroops(s,1,[1]);return s}
+function setup(){const s=freshSave();s.cookedRice=100;setFormation(s,'platoon',40);stationTroops(s,1,[1]);return s}
 const begin=s=>startFarming(s,'help',0,field.crop,[1],field.id,[{unitId:1,troops:7,type:'squad'}])
 const step=(s,seconds)=>advanceEconomy(s,seconds,()=>0)
 

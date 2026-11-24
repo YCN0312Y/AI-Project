@@ -1,12 +1,30 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { freshSave,normalizeSave,setFormation,mergeFormations,unmergeFormation,settle,applyBattleLosses,formation,formationMinimum,reinforcementCapacity,reinforcementWeapons,reinforceFormation,validateReinforcement,purchaseWeapon } from '../js/state.js'
-import { trainingStatus } from '../js/training.js'
 import { campaignDeployment,CampaignBattle,enemyUnitSpec } from '../js/campaign.js'
 import { Game } from '../js/game.js'
 import {fitCamera} from '../js/world-map.js'
 
-const roster=(count=2,troops=60)=>Array.from({length:count},(_,i)=>({id:i+1,name:`${i+1}班`,troops,groups:[{weapon:'rifle',troops,trainingBonus:0}]}))
+const roster=(count=2,troops=60)=>Array.from({length:count},(_,i)=>({id:i+1,name:`${i+1}班`,troops,groups:[{weapon:'rifle',troops}]}))
+
+test('敌我同武器和剩余兵力时单轮伤害相同，超过80人的敌军也按实际兵力开火',()=>{
+  const expected={rifle:120,pistol:60,machinegun:60,sniper:28.8,mortar:21.6}
+  for(const [weapon,damage] of Object.entries(expected)){
+    for(const hostile of [false,true]){
+      const troops=200
+      const units=[{id:1,name:'我方编制',troops,groups:[{weapon,troops}]}]
+      const battle=new CampaignBattle(1,units,[{name:'敌方编制',weapon,troops}])
+      battle.spawn=0;battle.update(.01)
+      const friendly=battle.units[0],enemy=battle.enemies[0]
+      enemy.x=friendly.x+100;enemy.y=friendly.y
+      const attacker=hostile?enemy:friendly,target=hostile?friendly:enemy
+      attacker.hp=120
+      enemy.cool=hostile?0:10;friendly.groups[0].cool=hostile?10:0
+      battle.update(.01)
+      assert(Math.abs(troops-target.hp-damage)<1e-9,`${weapon} ${hostile?'敌方':'我方'}伤害为 ${troops-target.hp}`)
+    }
+  }
+})
 
 test('主动出战只扣通用子弹，最后几发按实际发数结算，打空后靠近敌军近战',()=>{
   const s=freshSave(),g=game(s)
@@ -37,7 +55,9 @@ test('按实际被击溃敌军逐类累计武器，跨波保留，胜利才入�
   b.done=true;b.won=true;const result=settle(s,b)
   assert.deepEqual(result.capturedWeapons,{rifle:7,pistol:5,machinegun:8,sniper:6,mortar:9})
   assert.deepEqual(s.weaponCounts,{rifle:127,pistol:5,machinegun:8,sniper:6,mortar:9})
+  assert.equal(result.capturedBullets,52)
   const stock={...s.weaponCounts};assert.equal(settle(s,b),null);assert.deepEqual(s.weaponCounts,stock)
+  assert.equal(s.bullets,52)
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
 })
 
@@ -48,6 +68,7 @@ test('失败或撤退即使击败敌军也不缴获，玩家阵亡武器仍正�
     b.defeatedWeapons={rifle:50,pistol:20,machinegun:10,sniper:0,mortar:0};b.units[0].hp=3.7;b.done=true;b.won=won
     if(won)b.mode='defense'
     const result=settle(s,b);assert(Object.values(result.capturedWeapons).every(count=>count===0))
+    assert.equal(result.capturedBullets,0);assert.equal(s.bullets,0)
     assert.equal(s.weaponCounts.rifle,won?120:115);assert.equal(s.weaponCounts.machinegun,won?2:1)
     assert.equal(s.weaponCounts.pistol,0)
   }
@@ -57,7 +78,11 @@ test('缴获受仓库上限限制，显示实际入库数量；旧战斗没有�
   const s=freshSave();s.weaponCounts.rifle=9999998;setFormation(s,'squad',10)
   const b=new CampaignBattle(1,campaignDeployment(s,[1]).units);b.won=true;b.done=true;b.defeatedWeapons.rifle=7
   const result=settle(s,b);assert.equal(result.capturedWeapons.rifle,2);assert.equal(s.weaponCounts.rifle,10000000)
+  assert.equal(result.capturedBullets,14);assert.equal(s.bullets,14)
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
+  s.bullets=9999997
+  const capped=new CampaignBattle(1,campaignDeployment(s,[1]).units);capped.won=true;capped.done=true;capped.defeatedWeapons.rifle=7
+  const loot=settle(s,capped);assert.equal(loot.capturedWeapons.rifle,0);assert.equal(loot.capturedBullets,3);assert.equal(s.bullets,10000000)
   const old=new CampaignBattle(1,campaignDeployment(s,[1]).units);delete old.defeatedWeapons;old.won=true;old.done=true
   assert(Object.values(settle(s,old).capturedWeapons).every(count=>count===0));assert.equal(s.weaponCounts.rifle,10000000)
 })
@@ -68,7 +93,8 @@ test('胜利结算保存缴获库存，结果界面显示各类型入库数量�
   g.battle=new CampaignBattle(1,campaignDeployment(s,[1]).units);g.battle.won=true;g.battle.done=true
   g.battle.defeatedWeapons.rifle=12;g.battle.defeatedWeapons.machinegun=3;g.finish();drawModal(g)
   assert.equal(saved.weaponCounts.rifle,132);assert.equal(saved.weaponCounts.machinegun,3)
-  assert(labels.some(label=>label.includes('缴获入库：步枪 ×12 · 轻机枪 ×3')))
+  assert.equal(saved.bullets,30)
+  assert(labels.includes('缴获入库：步枪 ×12 · 轻机枪 ×3 · 子弹 30 发'))
 })
 
 function game(save=freshSave()){
@@ -80,15 +106,15 @@ function game(save=freshSave()){
 function drawModal(g){g.buttons=[];if(g.scene==='world-map'&&!g.modal){g.drawWorldMap();for(const b of g.buttons)assert(b.x>=0&&b.y>=0&&b.x+b.w<=1440&&b.y+b.h<=810,b.id)}else{g.drawModal();for(const button of g.buttons)assert(button.x>=270&&button.y>=130&&button.x+button.w<=1170&&button.y+button.h<=680,button.id)}}
 function click(g,id){const button=g.buttons.find(button=>button.id===id);assert(button,id);button.fn()}
 
-test('只部署选中的独立部队，合编下属不重复参战，保留各部队训练和武器',()=>{
+test('只部署选中的独立部队，合编下属不重复参战，保留各部队武器',()=>{
   const s=freshSave();for(let i=0;i<4;i++)assert(setFormation(s,'squad',10).ok)
-  s.formations[0].trainingXp=600
+
   const parent=mergeFormations(s,[1,2,3]).unit,before=JSON.stringify(s)
   for(const ids of [[],[4,4],[1],[parent.id,1],[999]])assert.equal(campaignDeployment(s,ids).ok,false)
   const only=campaignDeployment(s,[4]);assert(only.ok);assert.equal(only.troops,10);assert.equal(only.units.length,1)
   const all=campaignDeployment(s,[parent.id,4]);assert(all.ok);assert.equal(all.troops,40);assert.equal(all.units.length,2)
-  assert.equal(all.units[0].groups[0].troops,30);assert.equal(all.units[0].groups[0].trainingBonus,.01)
-  assert.equal(all.units[1].groups[0].trainingBonus,0);assert.equal(JSON.stringify(s),before)
+  assert.equal(all.units[0].groups[0].troops,30)
+  assert.equal(JSON.stringify(s),before)
   const b=new CampaignBattle(1,all.units);b.units[0].hp=0;b.units[0].groups[0].cool=3
   assert.equal(JSON.stringify(s),before);assert.equal(all.units[0].groups[0].cool,undefined)
 })
@@ -132,13 +158,13 @@ test('点选单个单位后点击地面只移动该单位，拖动事件不持�
   const before=JSON.stringify(second.target);assert.equal(b.moveSelected(NaN,0),false);assert.equal(JSON.stringify(second.target),before)
 })
 
-test('各单位从自己所在位置按射程开火，训练加快开火而不改变每发威力',()=>{
-  const units=roster(2,10);units[0].groups[0].trainingBonus=.12
+test('各单位从自己所在位置按射程开火，按武器间隔开火',()=>{
+  const units=roster(2,10)
   const b=new CampaignBattle(1,units),[first,second]=b.units;b.pending=0
   first.x=200;first.y=300;first.target={x:200,y:300};second.x=1000;second.y=600;second.target={x:1000,y:600}
   b.enemies=[{x:400,y:300,hp:100,maxHp:100,cool:10}]
   b.update(.21);assert.equal(b.enemies[0].hp,90)
-  assert(first.groups[0].cool<first.groups[0].weapon.interval)
+  assert.equal(first.groups[0].cool,first.groups[0].weapon.interval)
   b.enemies[0].x=800;b.enemies[0].y=600;const hp=b.enemies[0].hp
   b.update(.25);assert.equal(b.enemies[0].hp,hp-10)
 })
@@ -180,7 +206,7 @@ test('新战斗可完成首关，按战后实际余员扣兵，奖励只结算�
   const deployment=campaignDeployment(s,[1]),b=new CampaignBattle(1,deployment.units)
   for(let i=0;i<60*180&&!b.done;i++)b.update(1/60)
   assert(b.done);assert(b.won);assert(b.kills>0)
-  const reward=settle(s,b);assert.equal(reward.coins,140);assert.equal(s.stage,2);assert.equal(settle(s,b),null)
+  const reward=settle(s,b);assert.equal(reward.coins,40);assert.equal(s.stage,2);assert.equal(settle(s,b),null)
   const survivors=Math.ceil(b.units[0].hp)
   assert.equal(s.troops,survivors);assert.equal(s.formations[0].troops,survivors)
   assert.equal(reward.lostTroops,120-survivors);assert.equal(reward.lostUnits,0)
@@ -191,17 +217,16 @@ test('新战斗可完成首关，按战后实际余员扣兵，奖励只结算�
   support.enemies=[{x:800,y:400,hp:150,maxHp:150,cool:100}];assert.equal(support.strike(),false);assert.equal(support.enemies[0].hp,150)
 })
 
-test('胜利或撤退时10人剩4人扣6人，欠编、混合武器和训练经验保存并可继续出战',()=>{
+test('胜利或撤退时10人剩4人扣6人，欠编和混合武器保存并可继续出战',()=>{
   for(const won of [true,false]){
     const s=freshSave();s.weaponCounts.machinegun=2
     assert(setFormation(s,'squad',10,null,{rifle:8,machinegun:2}).ok)
-    s.formations[0].trainingXp=6000
+
     const b=new CampaignBattle(1,campaignDeployment(s,[1]).units);b.units[0].hp=3.7;b.done=true;b.won=won
     const result=settle(s,b)
     assert.equal(result.lostTroops,6);assert.equal(result.lostUnits,0);assert.equal(s.troops,114)
     assert.equal(s.formations[0].troops,4);assert.equal(s.formations[0].battleDamaged,true)
     assert.equal(s.formations[0].weapons.rifle,3);assert.equal(s.formations[0].weapons.machinegun,1)
-    assert.equal(s.formations[0].trainingXp,2400);assert.equal(trainingStatus(s,1).average,600)
     assert.equal(s.weaponCounts.rifle,115);assert.equal(s.weaponCounts.machinegun,1)
     assert.equal(formation(s).assignedTroops,4);assert.equal(formation(s).unassignedTroops,110)
     assert.equal(settle(s,b),null);assert.equal(s.troops,114)
@@ -260,18 +285,18 @@ test('部分战损不会让异常合编存档通过共享下属、重复下属�
 })
 
 function damagedSquad(){
-  const s=freshSave();assert(setFormation(s,'squad',7).ok);s.formations[0].trainingXp=4200
+  const s=freshSave();assert(setFormation(s,'squad',7).ok)
   const b=new CampaignBattle(1,campaignDeployment(s,[1]).units);b.units[0].hp=3;settle(s,b)
   return s
 }
 
-test('原有3人最多补9人到班上限12，超额失败不修改，原士兵经验和武器保留',()=>{
+test('原有3人最多补9人到班上限12，超额失败不修改，原士兵和武器保留',()=>{
   const s=damagedSquad(),before=JSON.stringify(s),troops=s.troops
   assert.equal(reinforcementCapacity(s,1).capacity,9)
   assert.equal(reinforceFormation(s,1,12).ok,false);assert.equal(JSON.stringify(s),before)
   for(const count of [-1,1.5,NaN])assert.equal(reinforceFormation(s,1,count).ok,false)
   assert.equal(JSON.stringify(s),before)
-  assert(reinforceFormation(s,1,9).ok);assert.equal(s.formations[0].troops,12);assert.equal(s.formations[0].trainingXp,1800)
+  assert(reinforceFormation(s,1,9).ok);assert.equal(s.formations[0].troops,12)
   assert.equal(s.formations[0].weapons.rifle,12);assert.equal(s.weaponCounts.rifle,116)
   assert.equal(s.troops,troops);assert.equal(formation(s).unassignedTroops,104)
   assert.equal(reinforcementCapacity(s,1).capacity,0);assert.equal(reinforceFormation(s,1,1).ok,false)
@@ -314,18 +339,18 @@ test('已有编制输入新增人数，原有3人不被覆盖，超额提示、�
   }finally{if(originalWx===undefined)delete globalThis.wx;else globalThis.wx=originalWx}
 })
 
-test('原有9人9把枪，补3人只新增3把，保存后12人12把且不重配老兵武器',()=>{
-  const s=freshSave();assert(setFormation(s,'squad',9).ok);s.formations[0].trainingXp=5400
+test('原有9人9把枪，补3人只新增3把，保存后12人12把且不重配现有士兵武器',()=>{
+  const s=freshSave();assert(setFormation(s,'squad',9).ok)
   assert(validateReinforcement(s,1,3,{rifle:3}).ok)
   assert.equal(validateReinforcement(s,1,3,{rifle:12}).ok,false)
   const missing=validateReinforcement(s,1,3,{rifle:0});assert(missing.ok)
   assert(reinforceFormation(s,1,3,{rifle:3},9).ok)
-  assert.equal(s.formations[0].troops,12);assert.equal(s.formations[0].weapons.rifle,12);assert.equal(s.formations[0].trainingXp,5400)
+  assert.equal(s.formations[0].troops,12);assert.equal(s.formations[0].weapons.rifle,12)
   assert.equal(s.weaponCounts.rifle,120);assert.equal(s.coins,600)
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
 })
 
-test('新增配发仅占用空闲武器，不挪用老兵或其他部队，原有混合武器保持不变',()=>{
+test('新增配发仅占用空闲武器，不挪用现有士兵或其他部队，原有混合武器保持不变',()=>{
   const s=freshSave();s.weaponCounts={rifle:16,pistol:3,machinegun:3,sniper:0,mortar:0}
   assert(setFormation(s,'squad',9,null,{rifle:6,machinegun:3}).ok);assert(setFormation(s,'squad',10).ok)
   assert.equal(reinforcementCapacity(s,1).capacity,3)
@@ -368,13 +393,13 @@ test('敌方以具名编制入场，兵力符合对应范围，击溃后按整�
 
 test('整支阵亡即时永久扣兵并移除编制，只扣一次，存活和未参战部队保持不变',()=>{
   const s=freshSave();for(let i=0;i<3;i++)assert(setFormation(s,'squad',10).ok)
-  s.formations[0].trainingXp=600;s.reserveTrainingXp=900
+
   const b=new CampaignBattle(1,campaignDeployment(s,[1,2]).units)
   b.units[0].hp=.1;assert.equal(applyBattleLosses(s,b),0);assert.equal(s.troops,120)
   b.units[0].hp=0;assert.equal(applyBattleLosses(s,b),10);assert.equal(s.troops,110)
   assert.deepEqual(s.formations.map(unit=>unit.id),[2,3]);assert.equal(b.lostTroops,10);assert.equal(b.lostUnits,1)
   assert.equal(formation(s).assignedTroops,20);assert.equal(formation(s).unassignedTroops,90)
-  assert.equal(s.reserveTrainingXp,900);assert.equal(s.weaponCounts.rifle,110)
+  assert.equal(s.weaponCounts.rifle,110)
   assert.equal(applyBattleLosses(s,b),0);assert.equal(s.troops,110)
   b.done=true;const result=settle(s,b);assert.equal(result.lostTroops,10);assert.equal(result.lostUnits,1)
   assert.equal(settle(s,b),null);assert.equal(s.troops,110)

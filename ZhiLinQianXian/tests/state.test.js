@@ -15,6 +15,13 @@ test('task rewards and battle settlement cannot be claimed twice',()=>{
   assert(settle(s,b));assert.equal(s.stage,2);assert.equal(settle(s,b),null)
   assert(claim(s,'first'));const coins=s.coins;assert.equal(claim(s,'first'),false);assert.equal(s.coins,coins)
 })
+test('战败或撤退只发少量金币，击敌人数和波次再高也最多发10金币',()=>{
+  for(const mode of ['campaign','defense']){
+    const s=freshSave(),battle=new Battle(mode,1,120)
+    battle.kills=2000;battle.wave=15
+    assert.equal(settle(s,battle).coins,10);assert.equal(s.coins,610);assert.equal(s.kills,2000)
+  }
+})
 test('invalid saves recover usable defaults',()=>{
   const s=normalizeSave({troops:-100,stage:999,coins:NaN,claimed:['fake'],name:'',settings:{effects:false}})
   assert.equal(s.troops,120);assert.equal(s.stage,12);assert.equal(s.coins,600);assert.equal(s.settings.effects,false);assert.deepEqual(s.claimed,[])
@@ -70,16 +77,16 @@ test('总指挥资料显示昵称、兵力、胜场和修改名称入口',()=>{
 })
 
 test('旧存档和战报移除军功，战斗仍发金币并且只结算一次',()=>{
-  const s=normalizeSave({name:'老指挥官',xp:90,troops:120,coins:900,wins:1,reserveTrainingXp:120,
+  const s=normalizeSave({name:'老指挥官',xp:90,troops:120,coins:900,wins:1,
     raidReports:[{id:1,siteId:1,force:12,outcome:'won',xp:90,coins:140,expiresAt:Date.now()+10000}]})
   assert(!Object.hasOwn(freshSave(),'xp'));assert(!Object.hasOwn(s,'xp'))
-  assert.equal(s.troops,120);assert.equal(s.coins,900);assert.equal(s.wins,1);assert.equal(s.reserveTrainingXp,120)
+  assert.equal(s.troops,120);assert.equal(s.coins,900);assert.equal(s.wins,1)
   assert.equal(s.raidReports[0].coins,140);assert(!Object.hasOwn(s.raidReports[0],'xp'))
   const b=new Battle('campaign',1,120);b.kills=4
   const reward=settle(s,b)
   assert(!Object.hasOwn(reward,'xp'));assert(!Object.hasOwn(s,'xp'))
-  assert.equal(reward.coins,16);assert.equal(s.kills,4)
-  assert.equal(settle(s,b),null);assert.equal(s.coins,916)
+  assert.equal(reward.coins,1);assert.equal(s.kills,4)
+  assert.equal(settle(s,b),null);assert.equal(s.coins,901)
   const restored=normalizeSave(JSON.parse(JSON.stringify(s)))
   assert.deepEqual(restored,s)
 })

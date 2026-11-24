@@ -55,22 +55,22 @@ test('刷新保留商店额度和时间，离线补满最多一轮，失败购�
 })
 
 test('自耕60秒产出所选生粮且只结算一次，取消释放人员，不能与编制重复占兵',()=>{
-  const s=freshSave();s.reserveTrainingXp=72000;assert(setFormation(s,'squad',10).ok)
-  const xp=s.reserveTrainingXp;assert(startFarming(s,'self',10,'rice').ok);assert.equal(formation(s).unassignedTroops,100);assert.equal(formation(s).farmingTroops,10)
+  const s=freshSave();assert(setFormation(s,'squad',10).ok)
+  assert(startFarming(s,'self',10,'rice').ok);assert.equal(formation(s).unassignedTroops,100);assert.equal(formation(s).farmingTroops,10)
   assert.equal(startFarming(s,'help',1).ok,false);assert.equal(setFormation(s,'company',110).ok,false)
   assert.equal(advanceFarming(s,59.9),null);assert.equal(s.rice,0)
-  const restored=normalizeSave(JSON.parse(JSON.stringify(s)));assert.deepEqual(restored,s);assert.equal(restored.reserveTrainingXp,xp)
+  const restored=normalizeSave(JSON.parse(JSON.stringify(s)));assert.deepEqual(restored,s)
   assert.equal(advanceFarming(restored,.1).amount,30);assert.equal(restored.rice,30);assert.equal(restored.farmTask,null);assert.equal(formation(restored).unassignedTroops,110)
   assert.equal(advanceFarming(restored,60),null);assert.equal(restored.rice,30)
   assert(startFarming(restored,'self',10,'corn').ok);assert(cancelFarming(restored));assert.equal(restored.corn,0)
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(restored))),restored)
 })
 
-test('耕作保留训练经验占比，后续组建、补员和解散不吞经验，零人不能耕作',()=>{
-  const s=freshSave();s.reserveTrainingXp=72000;assert(startFarming(s,'help',20).ok)
-  assert(setFormation(s,'squad',10).ok);assert.equal(s.formations[0].trainingXp,6000);assert.equal(s.reserveTrainingXp,66000)
-  assert(reinforceFormation(s,1,2).ok);assert.equal(s.formations[0].trainingXp,7200)
-  assert(removeFormation(s,1));assert.equal(s.reserveTrainingXp,72000);assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
+test('耕作期间可组建和补员，解散后恢复可用未编人数，零人不能耕作',()=>{
+  const s=freshSave();assert(startFarming(s,'help',20).ok)
+  assert(setFormation(s,'squad',10).ok);assert.equal(formation(s).unassignedTroops,90)
+  assert(reinforceFormation(s,1,2).ok);assert.equal(s.formations[0].troops,12)
+  assert(removeFormation(s,1));assert.equal(formation(s).unassignedTroops,100);assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(s))),s)
   const zero=freshSave();zero.troops=0;assert.equal(startFarming(zero,'self',1).ok,false)
   for(const n of [0,-1,1.5,101,NaN,'5'])assert.equal(startFarming(zero,'self',n).ok,false)
 })

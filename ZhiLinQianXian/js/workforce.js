@@ -6,29 +6,34 @@ export const PROJECT_UNIT_LIMIT=5
 const TYPES=[['squad','班',7,12],['platoon','排',25,40],['company','连',100,150],['battalion','营',400,1000],['regiment','团',1000,3000],['brigade','旅',3000,6000],['division','师',8000,15000],['corps','军',30000,80000]]
 export const DUTY_TYPES=[{id:'group',name:'临时分队',min:1,max:10000000},...TYPES.map(([id,name,min,max])=>({id,name,min,max}))]
 const tasks=s=>[...farmTasks(s),...Object.values(s.armoryTasks||{})]
-export const taskWorkersFrom=(task,id,unit)=>task?.allocations?task.allocations.find(a=>a.unitId===id)?.troops||0:(task?.unitIds||[]).includes(id)?unit.troops:0
+export const taskWorkersFrom=(task,id,unit)=>task?.allocations?task.allocations.find(a=>a.unitId===id)?.troops||0:(task?.unitIds||[]).includes(id)?unit?.troops||0:0
 export function removeTaskUnit(s,task,id){
+  return reduceTaskWorkers(s,task,id,Infinity)
+}
+export function reduceTaskWorkers(s,task,id,count){
   const index=task.unitIds.indexOf(id)
   if(index<0)return false
   const workersFor=unitId=>taskWorkersFrom(task,unitId,s.formations.find(unit=>unit.id===unitId))
-  const removed=workersFor(id)
+  const workers=workersFor(id),removed=Math.min(count,workers)
   if(task.cycleWorkers!==undefined){
     const earlier=task.unitIds.slice(0,index).reduce((n,unitId)=>n+workersFor(unitId),0)
     task.cycleWorkers-=Math.min(removed,Math.max(0,task.cycleWorkers-earlier))
   }
-  task.unitIds.splice(index,1);task.workers-=removed
-  if(task.allocations)task.allocations=task.allocations.filter(a=>a.unitId!==id)
+  if(removed===workers)task.unitIds.splice(index,1)
+  task.workers-=removed
+  const assignment=task.allocations?.find(a=>a.unitId===id)
+  if(assignment){
+    assignment.troops-=removed
+    if(!assignment.troops)task.allocations=task.allocations.filter(a=>a!==assignment)
+    else if(assignment.troops<DUTY_TYPES.find(type=>type.id===assignment.type).min)assignment.type='group'
+  }
   if(task.cycleWorkers===0)task.elapsed=0
   if(task.elapsed===0||task.cycleWorkers>=task.workers)delete task.cycleWorkers
   return true
 }
-export function availableWorkforce(s,id,includeTrainees=false){
+export function availableWorkforce(s,id){
   const unit=s.formations.find(u=>u.id===id);if(!unit)return 0
   if(formationActivity(s,id,true)==='battle')return 0
-  if(!includeTrainees){
-    const members=new Set(),visit=key=>{if(members.has(key))return;members.add(key);for(const child of s.formations.find(u=>u.id===key)?.children||[])visit(child)};visit(id)
-    if([s.trainingTask,...Object.values(s.villageTrainingTasks||{})].some(t=>t&&!t.settled&&members.has(t.unitId)))return 0
-  }
   return Math.max(0,unit.troops-tasks(s).reduce((n,t)=>n+taskWorkersFrom(t,id,unit),0))
 }
 export const dutyTypes=unit=>DUTY_TYPES.filter(t=>t.id==='group'||TYPES.findIndex(v=>v[0]===t.id)<=TYPES.findIndex(v=>v[0]===unit.type))

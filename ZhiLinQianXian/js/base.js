@@ -39,15 +39,13 @@ export function formationActivity(s,id,ignoreGarrison=false){
   if(farmTasks(s).some(task=>task.unitIds?.some(overlaps)))return 'farm'
   for(const [,task] of gatheringEntries(s))if(task.unitIds.some(overlaps))return 'gathering'
   if(Object.values(s.armoryTasks||{}).some(task=>task.unitIds.some(overlaps)))return 'armory'
-  if(s.trainingTask&&!s.trainingTask.settled&&overlaps(s.trainingTask.unitId))return 'training'
-  if(Object.values(s.villageTrainingTasks||{}).some(task=>task&&!task.settled&&overlaps(task.unitId)))return 'training'
   if(!ignoreGarrison&&villageOfFormation(s,id)!==null)return 'garrison'
   if(!ignoreGarrison&&Object.values(s.mapRegions||{}).some(record=>(record.garrisonIds||[]).some(overlaps)))return 'region'
   return null
 }
-export const activityLabel=kind=>({march:'行军中',region:'地区驻防中',garrison:'驻村保护中',farm:'耕作中',gathering:'采集中',battle:'出战中',training:'训练中',armory:'军械生产中'}[kind]||'空闲')
+export const activityLabel=kind=>({march:'行军中',region:'地区驻防中',garrison:'驻村保护中',farm:'耕作中',gathering:'采集中',battle:'出战中',armory:'军械生产中'}[kind]||'空闲')
 export function assignFormations(s,ids,kind,ignoreGarrison=false,allowedActivities=[]){
-  if(!['battle','training'].includes(kind)||!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)return false
+  if(kind!=='battle'||!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)return false
   const children=new Set(s.formations.flatMap(unit=>unit.children||[]))
   if(ids.some(id=>{
     if(!s.formations.some(unit=>unit.id===id)||children.has(id))return true

@@ -9,7 +9,7 @@ import {freshSave,normalizeSave,chooseStartingBase,relocateBase,setFormation,bas
 import {startMarch,advanceMarches,marchPosition} from '../js/marching.js'
 import {farmTaskAt,startFarming,formationActivity} from '../js/base.js'
 import {campaignDeployment} from '../js/campaign.js'
-import {startTrainingTask} from '../js/training.js'
+import {regionEnemyTroops} from '../js/regions.js'
 import {MAP_VIEW,MAP_SIZE,MAP_CORE,MAP_BOUNDS,MAP_BASE,MAP_SITES,ALL_VILLAGES,REGION_VILLAGES,MAP_FIELDS,MAP_ROADS,REGION_ZOOM,MIN_ZOOM,MAX_ZOOM,mapBase,mapRegion,createCamera,mapToScreen,screenToMap,zoomCamera,panCamera,fitCamera,focusCamera} from '../js/world-map.js'
 
 const near=(a,b)=>assert(Math.abs(a-b)<1e-7,`${a} != ${b}`)
@@ -148,15 +148,19 @@ test('新档在地图上确认无敌军的外围村庄后，从该村发兵，�
     getWindowInfo:()=>({windowWidth:1440,windowHeight:810,pixelRatio:1}),onTouchStart(){},onTouchMove(){},onTouchEnd(){}}
   globalThis.requestAnimationFrame=()=>{}
   try{
-    const g=new Game(),enemy=REGION_VILLAGES.find(v=>mapRegion(v.regionId).enemyTroops)
-    const candidate=REGION_VILLAGES.find(v=>v.regionId.startsWith('region-outer-')&&!mapRegion(v.regionId).enemyTroops)
-    assert(g.choosingBase);assert.equal(writes,0)
+    const initial=new Game(),startingMap=structuredClone(initial.save.mapRegions),startingPopulation=structuredClone(initial.save.villagePopulation)
+    assert(initial.choosingBase);assert.equal(writes,1);assert.equal(stored.baseVillageId,null)
+    const g=new Game(),enemy=REGION_VILLAGES.find(v=>regionEnemyTroops(g.save,v.regionId)>0)
+    const candidate=REGION_VILLAGES.find(v=>v.regionId.startsWith('region-outer-')&&!regionEnemyTroops(g.save,v.regionId))
+    assert(g.choosingBase);assert.equal(writes,1)
+    assert.deepEqual(g.save.mapRegions,startingMap);assert.deepEqual(g.save.villagePopulation,startingPopulation)
     g.tick(1000);g.tick(62000);assert.equal(g.save.mealElapsed,0)
     assert(!g.buttons.some(b=>['map-site-base','warehouse','map-base-confirm','map-region-'+enemy.regionId].includes(b.id)))
     assert.equal(chooseStartingBase(g.save,enemy.id),false)
+    focusCamera(g.mapCamera,candidate);g.dirty=true;g.render()
     const p=mapToScreen(g.mapCamera,candidate)
     g.touch(touch(g,[p.x,p.y]));g.touchEnd(lift(g,p.x,p.y));g.render()
-    assert.equal(g.mapSelected,candidate.id);assert.equal(g.save.baseVillageId,null);assert.equal(writes,0)
+    assert.equal(g.mapSelected,candidate.id);assert.equal(g.save.baseVillageId,null);assert.equal(writes,1)
     const confirm=g.buttons.find(b=>b.id==='map-base-confirm');assert(confirm)
     g.touch(touch(g,[confirm.x+confirm.w/2,confirm.y+confirm.h/2]))
     g.render();assert(!g.choosingBase);assert.equal(stored.baseVillageId,candidate.id)
@@ -164,12 +168,18 @@ test('新档在地图上确认无敌军的外围村庄后，从该村发兵，�
     assert.equal(chooseStartingBase(g.save,MAP_SITES[0].id),false)
     assert(g.buttons.some(b=>b.id==='map-site-base'))
     const reloaded=new Game();assert(!reloaded.choosingBase);assert.equal(mapBase(reloaded.save).roadId,candidate.regionId)
+    assert.deepEqual(reloaded.save.mapRegions,startingMap);assert.deepEqual(reloaded.save.villagePopulation,startingPopulation)
     assert(setFormation(reloaded.save,'squad',10).ok)
-    const arrival=MAP_SITES[0],dispatch=startMarch(reloaded.save,'village',arrival.id,[1]);assert(dispatch.ok)
+    const arrival=MAP_SITES.find(site=>!regionEnemyTroops(reloaded.save,site.id))
+    const dispatch=startMarch(reloaded.save,'village',arrival.id,[1]);assert(dispatch.ok)
     assert.deepEqual(dispatch.order.route[0],{x:candidate.x,y:candidate.y});assert(dispatch.order.route.length>2)
     advanceMarches(reloaded.save,10000)
     assert.match(recallGarrison(reloaded.save,arrival.id,1).message,new RegExp(candidate.name))
     assert.equal(baseForces(reloaded.save).units[0].id,1)
+    stored=undefined
+    const restarted=new Game();assert(restarted.choosingBase)
+    assert.notDeepEqual(restarted.save.mapRegions,startingMap)
+    assert.notDeepEqual(restarted.save.villagePopulation,startingPopulation)
   }finally{if(oldWx===undefined)delete globalThis.wx;else globalThis.wx=oldWx;if(oldFrame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=oldFrame}
 })
 
@@ -287,11 +297,11 @@ test('滚轮只在地图区域生效，弹窗隔离缩放，触控缩放按钮�
   click(g,'map-focus');assert.equal(g.mapCamera.zoom,.65)
 })
 
-test('绘制全屏地图与部署遮罩不触发战斗渲染；浏览地图期间训练继续且不打断场景',()=>{
-  const g=game();setFormation(g.save,'squad',10);assert(startTrainingTask(g.save,1).ok)
+test('绘制全屏地图与部署遮罩不触发战斗渲染，推进后勤也不切换场景',()=>{
+  const g=game();setFormation(g.save,'squad',10)
   Object.assign(g,{canvas:{width:1440,height:810},dpr:1,toast:null,drawBattle(){assert.fail('地图不能绘制战斗')}})
   g.open('campaign');g.render();g.updateLogistics(10)
-  assert.equal(g.save.trainingSessions,1);assert.equal(g.scene,'world-map');assert.equal(g.modal,null)
+  assert.equal(g.scene,'world-map');assert.equal(g.modal,null)
   g.start('campaign',1);g.render();assert.equal(g.modal,'campaign-deploy')
 })
 
@@ -364,7 +374,7 @@ test('点击田地派编制代耕，保存田块归属，完工后按出工人�
   modal(g);assert.equal(g.buttons.some(b=>b.id==='farm-self'||b.id==='farm-source-reserve'||b.id==='farm-unit-2'||b.id.startsWith('farm-crop-')),false)
   click(g,'farm-unit-1');modal(g);click(g,'farm-start')
   assert.equal(farmTaskAt(g.save,field.id).type,'help');assert.equal(farmTaskAt(g.save,field.id).fieldId,field.id);assert.deepEqual(farmTaskAt(g.save,field.id).unitIds,[1])
-  assert.equal(campaignDeployment(g.save,[1]).ok,false);assert.equal(startTrainingTask(g.save,1).ok,false)
+  assert.equal(campaignDeployment(g.save,[1]).ok,false)
   const restored=normalizeSave(structuredClone(g.save));assert.deepEqual(restored,g.save);assert.equal(formationActivity(restored,1),'farm')
   modal(g);click(g,'farm-back');assert.equal(g.scene,'world-map');assert.equal(g.modal,null)
   g.updateLogistics(4,()=>0);const labels=[];g.ctx.fillText=value=>labels.push(String(value));draw(g);assert(labels.includes('代耕中'));assert(labels.includes('10人耕作'))
@@ -464,7 +474,7 @@ test('设置中点击暂停游戏后停止时间、音乐并锁定一切操作�
   globalThis.requestAnimationFrame=()=>{}
   globalThis.wx={...oldWx,createInnerAudioContext:()=>({play(){plays++},pause(){pauses++}})}
   try{
-    const g=game();setFormation(g.save,'squad',10);assert(startTrainingTask(g.save,1).ok)
+    const g=game();setFormation(g.save,'squad',10)
     g.logisticsActive=true;g.last=1000;g.canvas={width:1440,height:810};g.dpr=1
     g.openWorldMap();draw(g);assert.equal(g.buttons.some(b=>b.id==='map-pause'),false)
     const playsBefore=plays
@@ -479,7 +489,7 @@ test('设置中点击暂停游戏后停止时间、音乐并锁定一切操作�
     const resume=g.buttons[0]
     g.touch(touch(g,[resume.x+resume.w/2,resume.y+resume.h/2]))
     assert.equal(g.paused,false);assert(plays>playsBefore)
-    g.tick(17000);assert.equal(g.save.trainingSessions,1)
+    g.tick(17000);assert(g.save.mealElapsed>before.mealElapsed)
   }finally{
     if(oldFrame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=oldFrame
     if(oldWx===undefined)delete globalThis.wx;else globalThis.wx=oldWx

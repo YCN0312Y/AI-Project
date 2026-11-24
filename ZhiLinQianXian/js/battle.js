@@ -3,7 +3,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 export class Battle {
   constructor(mode,level,troops,weapon='rifle',loadout=null){
     this.weapon=weaponById(weapon)
-    this.groups=loadout?.map(g=>({weapon:weaponById(g.weapon),troops:g.troops,trainingBonus:Math.max(0,Math.min(.12,g.trainingBonus||0)),cool:.2}))||null
+    this.groups=loadout?.map(g=>({weapon:weaponById(g.weapon),troops:g.troops,cool:.2}))||null
     Object.assign(this,{mode,level,maxHp:troops,hp:troops,x:340,y:405,target:{x:340,y:405},wave:1,kills:0,time:0,spawn:1,cool:0.2,enemies:[],shots:[],bursts:[],done:false,won:false,settled:false,breather:0,artillery:0})
     this.damageMultiplier=1;this.intervalMultiplier=1;this.speedMultiplier=1
     this.goal=mode==='defense'?Infinity:3+Math.floor(level/4)
@@ -31,7 +31,7 @@ export class Battle {
       let target=null,best=w.range
       for(const e of this.enemies){const dist=Math.hypot(e.x-this.x,e.y-this.y);if(e.hp>0&&dist<best){target=e;best=dist}}
       if(!target||group.cool>0)continue
-      const damage=(7+this.maxHp*.025)*w.damage*(group.troops/this.maxHp)*(1+(group.trainingBonus||0))*this.damageMultiplier
+      const damage=(7+this.maxHp*.025)*w.damage*(group.troops/this.maxHp)*this.damageMultiplier
       group.cool=w.interval*this.intervalMultiplier;if(!this.groups)this.cool=group.cool
       if(w.splash){
         for(const e of this.enemies)if(e.hp>0&&Math.hypot(e.x-target.x,e.y-target.y)<=w.splash)e.hp-=damage
