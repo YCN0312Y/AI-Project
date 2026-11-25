@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'ZhiLinQianXian/**'
+      - 'Cat/**'
       - '.github/workflows/deploy-zhilinqianxian.yml'
   workflow_dispatch:
 
@@ -38,6 +39,9 @@ jobs:
           cp ZhiLinQianXian/index.html site/
           cp -r ZhiLinQianXian/js ZhiLinQianXian/preview site/
           if [ -d ZhiLinQianXian/audio ]; then cp -r ZhiLinQianXian/audio site/; fi
+          mkdir -p site/Cat
+          cp Cat/index.html site/Cat/
+          cp -r Cat/css Cat/js Cat/assets site/Cat/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

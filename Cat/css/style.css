@@ -1,0 +1,415 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100dvh;
+  background-color: #121620;
+  color: #e6ebf5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", sans-serif;
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 14px 30px;
+}
+
+.app-shell {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ==================== PERSIAN CAT STAGE CARD ==================== */
+.stage-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #2c313b;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.56),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  touch-action: none;
+}
+
+.stage-wrap.hide-cursor #catCanvas {
+  cursor: none;
+}
+
+.stage-wrap.is-orbiting #catCanvas {
+  cursor: grab;
+}
+
+.stage-wrap.is-orbiting.is-dragging #catCanvas {
+  cursor: grabbing;
+}
+
+#catCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.feed-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.feed-overlay[hidden] {
+  display: none;
+}
+
+.stage-wrap.is-feeding #catCanvas {
+  cursor: default;
+}
+
+.light-btn,
+.orbit-btn {
+  position: absolute;
+  top: 12px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(18, 22, 32, 0.46);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(242, 246, 255, 0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.2s ease;
+  z-index: 5;
+}
+
+.light-btn {
+  right: 12px;
+  width: 38px;
+}
+
+.orbit-btn {
+  left: 12px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.light-btn:hover,
+.orbit-btn:hover {
+  background: rgba(28, 34, 48, 0.68);
+}
+
+.orbit-btn[aria-pressed="true"] {
+  background: #242933;
+  border-color: #ecceaa;
+  color: #fff0db;
+}
+
+.orbit-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.orbit-controls {
+  display: flex;
+  align-items: center;
+  width: min(100%, 420px);
+  gap: 10px;
+  padding: 10px 4px 0;
+  color: #ccd5e5;
+  font-size: 12px;
+}
+
+.orbit-controls[hidden] {
+  display: none;
+}
+
+.orbit-controls input {
+  flex: 1;
+  min-width: 0;
+  accent-color: #e6c8a4;
+  cursor: pointer;
+}
+
+.orbit-controls output {
+  min-width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.orbit-controls button,
+.orbit-hint {
+  white-space: nowrap;
+}
+
+.orbit-controls .mini-btn {
+  flex: 0 0 auto;
+}
+
+.light-btn:active {
+  transform: scale(0.92);
+}
+
+.light-btn svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* ==================== CORE ACTION PILLS BAR ==================== */
+.action-bar {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(235, 240, 250, 0.88);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.action-pill:hover {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.action-pill:active {
+  transform: scale(0.95);
+}
+
+.action-pill:disabled {
+  cursor: default;
+  transform: none;
+}
+
+.action-pill:disabled:not(.active) {
+  opacity: 0.48;
+}
+
+.action-pill.active {
+  background: rgba(235, 212, 182, 0.16);
+  border-color: rgba(238, 214, 180, 0.48);
+  color: #fff6ea;
+}
+
+.action-pill svg,
+.action-pill .icon-slot svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+
+.action-pill .icon-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==================== SECONDARY UTILITY ICONS ==================== */
+.toolbar {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.tool-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  background: transparent;
+  color: rgba(220, 228, 242, 0.68);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.tool-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tool-btn:active {
+  transform: scale(0.92);
+}
+
+.tool-btn.active {
+  color: #f2f6ff;
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.tool-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ==================== CUSTOMIZATION SLIDERS DRAWER ==================== */
+.settings-drawer {
+  width: 100%;
+  max-width: 400px;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: max-height 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, transform 0.22s ease, margin-top 0.22s ease;
+  pointer-events: none;
+}
+
+.settings-drawer.open {
+  max-height: 320px;
+  opacity: 1;
+  transform: translateY(0);
+  margin-top: 14px;
+  pointer-events: auto;
+}
+
+.settings-card {
+  background: rgba(24, 30, 44, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  padding: 14px 18px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: rgba(230, 235, 245, 0.86);
+}
+
+.slider-label {
+  min-width: 64px;
+  font-weight: 500;
+}
+
+.slider-row input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+  cursor: pointer;
+}
+
+.slider-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e8edf7;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease;
+}
+
+.slider-row input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.slider-val {
+  min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: rgba(230, 235, 245, 0.58);
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  gap: 8px;
+}
+
+.mini-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(230, 235, 245, 0.86);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.mini-btn:hover {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.mini-btn.active {
+  background: rgba(74, 143, 231, 0.22);
+  border-color: rgba(74, 143, 231, 0.55);
+  color: #d8e9ff;
+}
+
+.footer-credit {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: rgba(200, 210, 228, 0.46);
+  letter-spacing: 0.02em;
+}
+
+.webgl-error {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: #f5b5b5;
+  background: rgba(18, 22, 32, 0.92);
+}
