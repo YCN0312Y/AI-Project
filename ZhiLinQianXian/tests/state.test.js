@@ -118,17 +118,27 @@ test('手枪可以购买、装备与持久化，使用独立射程和伤害',()=
   b.enemies[0].x=b.x+200;b.update(.01);assert.equal(b.enemies[0].hp,93.5)
 })
 
-test('商城提供购买入口，仓库展示库存，按钮位于面板内',()=>{
+test('商城提供购买入口，仓库按实际配发显示已装备和未装备数',()=>{
   const g=Object.create(Game.prototype)
-  g.ctx=new Proxy({}, {get:(o,key)=>o[key]??(()=>{}),set:(o,key,value)=>(o[key]=value,true)})
+  const labels=[]
+  g.ctx=new Proxy({fillText(value){labels.push(value)}}, {get:(o,key)=>o[key]??(()=>{}),set:(o,key,value)=>(o[key]=value,true)})
   g.save=freshSave();g.persist=()=>{};g.notify=()=>{}
-  const draw=()=>{g.buttons=[];g.drawModal();for(const b of g.buttons){assert(b.x>=270&&b.y>=130&&b.x+b.w<=1170&&b.y+b.h<=680,b.id)}}
+  const draw=()=>{labels.length=0;g.buttons=[];g.drawModal();for(const b of g.buttons){assert(b.x>=270&&b.y>=130&&b.x+b.w<=1170&&b.y+b.h<=680,b.id)}}
   g.open('shop');draw()
   for(const tab of ['weapons','ammo','medical'])assert(g.buttons.some(b=>b.id==='tab-'+tab))
   for(const w of WEAPONS)assert(g.buttons.some(b=>b.id==='buy-weapon-'+w.id))
   g.buttons.find(b=>b.id==='buy-weapon-pistol').fn();draw();g.buttons.find(b=>b.id==='buy-weapon-pistol').fn()
   assert.equal(g.save.weaponCounts.pistol,2);assert.equal(g.save.equippedWeapon,'rifle')
   g.open('warehouse');draw();assert.equal(g.buttons.some(b=>b.id.startsWith('equip-')||b.id.startsWith('buy-weapon-')),false)
+  assert(!labels.includes('轻机枪'))
+  assert(labels.includes('总数 120 把'));assert(labels.includes('已装备 0 把'));assert(labels.includes('未装备 120 把'))
+  assert(setFormation(g.save,'squad',7,null,{rifle:5,pistol:1}).ok)
+  for(let i=0;i<2;i++)assert(setFormation(g.save,'squad',7,null,{rifle:5}).ok)
+  assert(mergeFormations(g.save,[1,2,3]).ok);draw()
+  assert(labels.includes('已装备 15 把'));assert(labels.includes('未装备 105 把'))
+  assert(labels.includes('总数 2 把'));assert(labels.includes('已装备 1 把'));assert(labels.includes('未装备 1 把'))
+  assert(setFormation(g.save,'squad',7,1,{rifle:5}).ok);draw()
+  assert(labels.includes('已装备 0 把'));assert(labels.includes('未装备 2 把'))
   assert.equal(g.save.weaponCounts.pistol,2);g.open('shop')
   for(const category of ['ammo','medical']){
     g.inventoryTab=category;draw()
@@ -419,16 +429,20 @@ test('编制总览按类型进入，列表仅显示概要，逐层查看和路�
   const g=Object.create(Game.prototype),texts=[]
   g.ctx=new Proxy({fillText:value=>texts.push(String(value))},{get:(o,key)=>o[key]??(()=>{}),set:(o,key,value)=>(o[key]=value,true)})
   g.save=freshSave();g.persist=()=>{};g.notify=()=>{}
-  for(let i=0;i<9;i++)assert(setFormation(g.save,'squad',12).ok)
+  for(let i=0;i<9;i++)assert(setFormation(g.save,'squad',12,null,[{},{rifle:6}][i]??null).ok)
   const platoons=[];for(let i=0;i<3;i++)platoons.push(mergeFormations(g.save,[i*3+1,i*3+2,i*3+3]).unit.id)
   const company=mergeFormations(g.save,platoons).unit,before=JSON.stringify(g.save)
   const draw=()=>{texts.length=0;g.buttons=[];g.drawModal();for(const b of g.buttons)assert(b.x>=270&&b.y>=130&&b.x+b.w<=1170&&b.y+b.h<=680,b.id)}
   g.open('formation');draw();assert.equal(g.buttons.filter(b=>b.id.startsWith('formation-category-')).length,8)
   g.buttons.find(b=>b.id==='formation-category-company').fn();draw();assert.equal(g.modal,'formation-list')
   assert.equal(g.buttons.filter(b=>b.id.startsWith('formation-view-')).length,1);assert.equal(texts.includes('武器配置'),false)
+  assert(texts.includes('部分配发 90/108'))
   assert.equal(g.buttons.some(b=>b.id.startsWith('formation-remove-')),false)
   g.buttons.find(b=>b.id==='formation-view-'+company.id).fn();draw();assert(texts.includes('武器配置'))
-  g.buttons.find(b=>b.id==='child-view-'+platoons[0]).fn();draw();g.buttons.find(b=>b.id==='child-view-1').fn();draw()
+  g.buttons.find(b=>b.id==='child-view-'+platoons[0]).fn();draw()
+  for(const label of ['无武器','部分配发 6/12','满配','部分配发 18/36'])assert(texts.includes(label),label)
+  g.buttons.find(b=>b.id==='child-view-1').fn();draw()
+  assert(texts.includes('无武器'))
   assert(texts.includes('1连')&&texts.includes('1排')&&texts.includes('1班'))
   assert(g.buttons.some(b=>b.id==='formation-detail-edit'));assert.equal(g.buttons.some(b=>b.id==='formation-detail-remove'),false)
   g.buttons.find(b=>b.id==='formation-detail-edit').fn();draw();g.buttons.find(b=>b.id==='formation-cancel').fn();draw();assert.equal(g.formationDetailId,1)
