@@ -1,0 +1,17 @@
+{
+  "description": "扩编战争 - 微信小游戏",
+  "compileType": "game",
+  "libVersion": "3.0.0",
+  "appid": "touristappid",
+  "projectname": "kuobian-war",
+  "packOptions": { "ignore": [{ "type": "folder", "value": "dev" }, { "type": "folder", "value": "web" }] },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": false,
+    "minified": true,
+    "newFeature": true
+  },
+  "condition": {},
+  "isGameTourist": false
+}

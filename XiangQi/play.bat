@@ -1,3 +1,3 @@
 @echo off
-"C:\Users\Administrator\.local\bin\python3.11.exe" "%~dp0main.py"
+"C:\Users\Administrator\.local\bin\python3.11.exe" "%~dp0Source\main.py"
 pause

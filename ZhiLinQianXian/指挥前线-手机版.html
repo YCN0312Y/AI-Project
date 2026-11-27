@@ -186,7 +186,7 @@ if (location.origin === 'http://localhost:8136' && !demo) {
 
 };
 __mods["js/game.js"]=function(__exp,__req,__bind){
-let C, box, text, line, circle, icon, tank, poly, brackets, weaponArt, baseRegionMap, regionRoads, villageFields, mapFlag;__bind('js/art.js',m=>{C=m.C;box=m.box;text=m.text;line=m.line;circle=m.circle;icon=m.icon;tank=m.tank;poly=m.poly;brackets=m.brackets;weaponArt=m.weaponArt;baseRegionMap=m.baseRegionMap;regionRoads=m.regionRoads;villageFields=m.villageFields;mapFlag=m.mapFlag;});let MAP_CORE, MAP_BOUNDS, MAP_VIEW, MAP_LOCAL_VILLAGES, MAP_REGIONS, MAP_REGION_ROADS, REGION_KINDS, MAP_TERRAIN_STYLES, MAP_FLAG_COLORS, mapBase, mapRegion, mapVillage, MAP_ROADS, MAP_TRAILS, MAP_FIELDS, mapField, mapLocation, mapMarkerScale, createCamera, mapToScreen, screenToMap, anchorCamera, zoomCamera, panCamera, fitCamera, focusCamera, constrainCamera;__bind('js/world-map.js',m=>{MAP_CORE=m.MAP_CORE;MAP_BOUNDS=m.MAP_BOUNDS;MAP_VIEW=m.MAP_VIEW;MAP_LOCAL_VILLAGES=m.MAP_LOCAL_VILLAGES;MAP_REGIONS=m.MAP_REGIONS;MAP_REGION_ROADS=m.MAP_REGION_ROADS;REGION_KINDS=m.REGION_KINDS;MAP_TERRAIN_STYLES=m.MAP_TERRAIN_STYLES;MAP_FLAG_COLORS=m.MAP_FLAG_COLORS;mapBase=m.mapBase;mapRegion=m.mapRegion;mapVillage=m.mapVillage;MAP_ROADS=m.MAP_ROADS;MAP_TRAILS=m.MAP_TRAILS;MAP_FIELDS=m.MAP_FIELDS;mapField=m.mapField;mapLocation=m.mapLocation;mapMarkerScale=m.mapMarkerScale;createCamera=m.createCamera;mapToScreen=m.mapToScreen;screenToMap=m.screenToMap;anchorCamera=m.anchorCamera;zoomCamera=m.zoomCamera;panCamera=m.panCamera;fitCamera=m.fitCamera;focusCamera=m.focusCamera;constrainCamera=m.constrainCamera;});let regionRecord, regionUnits, regionLocalUnits, regionEnemyTroops, regionOwner, regionDispatch, occupyRegion, recallRegion, resolveRegionBattle;__bind('js/regions.js',m=>{regionRecord=m.regionRecord;regionUnits=m.regionUnits;regionLocalUnits=m.regionLocalUnits;regionEnemyTroops=m.regionEnemyTroops;regionOwner=m.regionOwner;regionDispatch=m.regionDispatch;occupyRegion=m.occupyRegion;recallRegion=m.recallRegion;resolveRegionBattle=m.resolveRegionBattle;});let startMarch, startGarrisonTransfer, advanceMarches, marchPosition, marchTarget, marchRegionId, routeLength, MARCH_SPEED;__bind('js/marching.js',m=>{startMarch=m.startMarch;startGarrisonTransfer=m.startGarrisonTransfer;advanceMarches=m.advanceMarches;marchPosition=m.marchPosition;marchTarget=m.marchTarget;marchRegionId=m.marchRegionId;routeLength=m.routeLength;MARCH_SPEED=m.MARCH_SPEED;});let farmTravelPosition, farmRouteLength, FARM_TRAVEL_SPEED;__bind('js/farm-travel.js',m=>{farmTravelPosition=m.farmTravelPosition;farmRouteLength=m.farmRouteLength;FARM_TRAVEL_SPEED=m.FARM_TRAVEL_SPEED;});let SAVE_KEY, MODES, GOODS, MISSIONS, FORMATION_TYPES, normalizeSave, formation, baseForces, unitName, lineageRows, formationRoots, formationPool, formationParent, previewFormationMerge, mergeFormations, unmergeFormation, formationResources, autoFormationWeapons, formationMinimum, validateFormation, setFormation, removeFormation, garrisonSplitTypes, splitGarrisonUnit, purchase, purchaseWeapon, claim, settle, applyBattleLosses, applyWarehouseFoodAdjustment, applyRequestedRiceSupply;__bind('js/state.js',m=>{SAVE_KEY=m.SAVE_KEY;MODES=m.MODES;GOODS=m.GOODS;MISSIONS=m.MISSIONS;FORMATION_TYPES=m.FORMATION_TYPES;normalizeSave=m.normalizeSave;formation=m.formation;baseForces=m.baseForces;unitName=m.formationName;lineageRows=m.lineageRows;formationRoots=m.formationRoots;formationPool=m.formationPool;formationParent=m.formationParent;previewFormationMerge=m.previewFormationMerge;mergeFormations=m.mergeFormations;unmergeFormation=m.unmergeFormation;formationResources=m.formationResources;autoFormationWeapons=m.autoFormationWeapons;formationMinimum=m.formationMinimum;validateFormation=m.validateFormation;setFormation=m.setFormation;removeFormation=m.removeFormation;garrisonSplitTypes=m.garrisonSplitTypes;splitGarrisonUnit=m.splitGarrisonUnit;purchase=m.purchase;purchaseWeapon=m.purchaseWeapon;claim=m.claim;settle=m.settle;applyBattleLosses=m.applyBattleLosses;applyWarehouseFoodAdjustment=m.applyWarehouseFoodAdjustment;applyRequestedRiceSupply=m.applyRequestedRiceSupply;});let WEAPONS, weaponById;__bind('js/weapons.js',m=>{WEAPONS=m.WEAPONS;weaponById=m.weaponById;});let Battle;__bind('js/battle.js',m=>{Battle=m.Battle;});let CampaignBattle, campaignDeployment, combatGroups;__bind('js/campaign.js',m=>{CampaignBattle=m.CampaignBattle;campaignDeployment=m.campaignDeployment;combatGroups=m.combatGroups;});let reinforcementCapacity, reinforcementWeapons, validateReinforcement, reinforceFormation, formationEditActivity, rejoinFormation, syncIdleBranches, formationOccupancy;__bind('js/state.js',m=>{reinforcementCapacity=m.reinforcementCapacity;reinforcementWeapons=m.reinforcementWeapons;validateReinforcement=m.validateReinforcement;reinforceFormation=m.reinforceFormation;formationEditActivity=m.formationEditActivity;rejoinFormation=m.rejoinFormation;syncIdleBranches=m.syncIdleBranches;formationOccupancy=m.formationOccupancy;});let chooseStartingBase, baseRelocationError, relocateBase, missionProgress;__bind('js/state.js',m=>{chooseStartingBase=m.chooseStartingBase;baseRelocationError=m.baseRelocationError;relocateBase=m.relocateBase;missionProgress=m.missionProgress;});let FOODS, FISH, DISHES, RECRUITMENT, RATIONS, foodStock, rationStock, mealCost, recruitmentInterval, validateDonation, mobilizationStatus, donationTaste, validateCooking, cookDish, hungerStatus, recruitmentFoodCost, mobilizationRecord, migrateVillageMobilization, serveMealNow, enableAllVillageMobilization, setAllVillagesMobilizing, donateAllVillages;__bind('js/logistics.js',m=>{FOODS=m.FOODS;FISH=m.FISH;DISHES=m.DISHES;RECRUITMENT=m.RECRUITMENT;RATIONS=m.RATIONS;foodStock=m.foodStock;rationStock=m.rationStock;mealCost=m.mealCost;recruitmentInterval=m.recruitmentInterval;validateDonation=m.validateDonation;mobilizationStatus=m.mobilizationStatus;donationTaste=m.donationTaste;validateCooking=m.validateCooking;cookDish=m.cookDish;hungerStatus=m.hungerStatus;recruitmentFoodCost=m.recruitmentFoodCost;mobilizationRecord=m.mobilizationRecord;migrateVillageMobilization=m.migrateVillageMobilization;serveMealNow=m.serveMealNow;enableAllVillageMobilization=m.enableAllVillageMobilization;setAllVillagesMobilizing=m.setAllVillagesMobilizing;donateAllVillages=m.donateAllVillages;});let stationTroops, recallGarrison, placeVillageFacility, removeVillageFacility, armoryTransferError, transferArmory, villageUnits, villageLocalUnits, villageOfFormation, villageName, isVillage, villageControlled, villageEnemyTroops, villageRegionId, controlledVillages, garrisonedVillages;__bind('js/villages.js',m=>{stationTroops=m.stationTroops;recallGarrison=m.recallGarrison;placeVillageFacility=m.placeVillageFacility;removeVillageFacility=m.removeVillageFacility;armoryTransferError=m.armoryTransferError;transferArmory=m.transferArmory;villageUnits=m.villageUnits;villageLocalUnits=m.villageLocalUnits;villageOfFormation=m.villageOfFormation;villageName=m.villageName;isVillage=m.isVillage;villageControlled=m.villageControlled;villageEnemyTroops=m.villageEnemyTroops;villageRegionId=m.villageRegionId;controlledVillages=m.controlledVillages;garrisonedVillages=m.garrisonedVillages;});let availableWorkforce, dutyTypes, DUTY_TYPES, PROJECT_UNIT_LIMIT, taskWorkersFrom;__bind('js/workforce.js',m=>{availableWorkforce=m.availableWorkforce;dutyTypes=m.dutyTypes;DUTY_TYPES=m.DUTY_TYPES;PROJECT_UNIT_LIMIT=m.PROJECT_UNIT_LIMIT;taskWorkersFrom=m.taskWorkersFrom;});let populationRule, villagePopulation;__bind('js/population.js',m=>{populationRule=m.populationRule;villagePopulation=m.villagePopulation;});let syncShop, purchaseQuote, shopAvailable, shopSells;__bind('js/shop.js',m=>{syncShop=m.syncShop;purchaseQuote=m.purchaseQuote;shopAvailable=m.shopAvailable;shopSells=m.shopSells;});let FARM, fieldCooldown, CROPS, helpHarvestYield, farmWorkers, farmTasks, farmTaskAt, farmLocalUnits, farmReserveAvailable, startFarming, cancelFarming, formationActivity, activityLabel, assignFormations, releaseFormations;__bind('js/base.js',m=>{FARM=m.FARM;fieldCooldown=m.fieldCooldown;CROPS=m.CROPS;helpHarvestYield=m.helpHarvestYield;farmWorkers=m.farmWorkers;farmTasks=m.farmTasks;farmTaskAt=m.farmTaskAt;farmLocalUnits=m.farmLocalUnits;farmReserveAvailable=m.farmReserveAvailable;startFarming=m.startFarming;cancelFarming=m.cancelFarming;formationActivity=m.formationActivity;activityLabel=m.activityLabel;assignFormations=m.assignFormations;releaseFormations=m.releaseFormations;});let advanceEconomy;__bind('js/economy.js',m=>{advanceEconomy=m.advanceEconomy;});let PRODUCTS, FACILITY_INTERVAL, facilityRunning, productionInventory, productionCapacity, productionMaterialLimit, startProduction, recallFacility;__bind('js/facilities.js',m=>{PRODUCTS=m.PRODUCTS;FACILITY_INTERVAL=m.FACILITY_INTERVAL;facilityRunning=m.facilityRunning;productionInventory=m.productionInventory;productionCapacity=m.productionCapacity;productionMaterialLimit=m.productionMaterialLimit;startProduction=m.startProduction;recallFacility=m.recallFacility;});let MATERIALS, MATERIAL_LIMIT, GATHER_INTERVAL, gatheringOptions, gatheringName, gatheringStock, gatheringEntries, availableGatheringUnits, startGathering, stopGathering;__bind('js/gathering.js',m=>{MATERIALS=m.MATERIALS;MATERIAL_LIMIT=m.MATERIAL_LIMIT;GATHER_INTERVAL=m.GATHER_INTERVAL;gatheringOptions=m.gatheringOptions;gatheringName=m.gatheringName;gatheringStock=m.gatheringStock;gatheringEntries=m.gatheringEntries;availableGatheringUnits=m.availableGatheringUnits;startGathering=m.startGathering;stopGathering=m.stopGathering;});let RAID_ALERT_LIMIT, advanceRaids, advanceEnemyOccupation, raidSite, raidOrigin, raidApproaching, raidMarch, raidReportStatus, raidRepelled, raidDeployment, assignRaidDefenders, makeRaidBattle, autoDefendRaid, settleRaid, finishRaid;__bind('js/raids.js',m=>{RAID_ALERT_LIMIT=m.RAID_ALERT_LIMIT;advanceRaids=m.advanceRaids;advanceEnemyOccupation=m.advanceEnemyOccupation;raidSite=m.raidSite;raidOrigin=m.raidOrigin;raidApproaching=m.raidApproaching;raidMarch=m.raidMarch;raidReportStatus=m.raidReportStatus;raidRepelled=m.raidRepelled;raidDeployment=m.raidDeployment;assignRaidDefenders=m.assignRaidDefenders;makeRaidBattle=m.makeRaidBattle;autoDefendRaid=m.autoDefendRaid;settleRaid=m.settleRaid;finishRaid=m.finishRaid;});let initMusic, setMusicEnabled, setMusicPaused, updateMusic, unlockMusic, pumpMusic;__bind('js/music.js',m=>{initMusic=m.initMusic;setMusicEnabled=m.setMusicEnabled;setMusicPaused=m.setMusicPaused;updateMusic=m.updateMusic;unlockMusic=m.unlockMusic;pumpMusic=m.pumpMusic;});const inside=(p,b)=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h
+let C, box, text, line, circle, icon, tank, poly, brackets, weaponArt, baseRegionMap, regionRoads, villageFields, mapFlag;__bind('js/art.js',m=>{C=m.C;box=m.box;text=m.text;line=m.line;circle=m.circle;icon=m.icon;tank=m.tank;poly=m.poly;brackets=m.brackets;weaponArt=m.weaponArt;baseRegionMap=m.baseRegionMap;regionRoads=m.regionRoads;villageFields=m.villageFields;mapFlag=m.mapFlag;});let MAP_CORE, MAP_BOUNDS, MAP_VIEW, MAP_LOCAL_VILLAGES, MAP_REGIONS, MAP_REGION_ROADS, REGION_KINDS, MAP_TERRAIN_STYLES, MAP_FLAG_COLORS, mapBase, mapRegion, mapVillage, MAP_ROADS, MAP_TRAILS, MAP_FIELDS, mapField, mapLocation, mapMarkerScale, createCamera, mapToScreen, screenToMap, anchorCamera, zoomCamera, panCamera, fitCamera, focusCamera, constrainCamera;__bind('js/world-map.js',m=>{MAP_CORE=m.MAP_CORE;MAP_BOUNDS=m.MAP_BOUNDS;MAP_VIEW=m.MAP_VIEW;MAP_LOCAL_VILLAGES=m.MAP_LOCAL_VILLAGES;MAP_REGIONS=m.MAP_REGIONS;MAP_REGION_ROADS=m.MAP_REGION_ROADS;REGION_KINDS=m.REGION_KINDS;MAP_TERRAIN_STYLES=m.MAP_TERRAIN_STYLES;MAP_FLAG_COLORS=m.MAP_FLAG_COLORS;mapBase=m.mapBase;mapRegion=m.mapRegion;mapVillage=m.mapVillage;MAP_ROADS=m.MAP_ROADS;MAP_TRAILS=m.MAP_TRAILS;MAP_FIELDS=m.MAP_FIELDS;mapField=m.mapField;mapLocation=m.mapLocation;mapMarkerScale=m.mapMarkerScale;createCamera=m.createCamera;mapToScreen=m.mapToScreen;screenToMap=m.screenToMap;anchorCamera=m.anchorCamera;zoomCamera=m.zoomCamera;panCamera=m.panCamera;fitCamera=m.fitCamera;focusCamera=m.focusCamera;constrainCamera=m.constrainCamera;});let regionRecord, regionUnits, regionLocalUnits, regionEnemyTroops, regionOwner, regionDispatch, occupyRegion, recallRegion, resolveRegionBattle;__bind('js/regions.js',m=>{regionRecord=m.regionRecord;regionUnits=m.regionUnits;regionLocalUnits=m.regionLocalUnits;regionEnemyTroops=m.regionEnemyTroops;regionOwner=m.regionOwner;regionDispatch=m.regionDispatch;occupyRegion=m.occupyRegion;recallRegion=m.recallRegion;resolveRegionBattle=m.resolveRegionBattle;});let startMarch, startGarrisonTransfer, advanceMarches, marchPosition, marchTarget, marchRegionId, routeLength, MARCH_SPEED;__bind('js/marching.js',m=>{startMarch=m.startMarch;startGarrisonTransfer=m.startGarrisonTransfer;advanceMarches=m.advanceMarches;marchPosition=m.marchPosition;marchTarget=m.marchTarget;marchRegionId=m.marchRegionId;routeLength=m.routeLength;MARCH_SPEED=m.MARCH_SPEED;});let farmTravelPosition, farmRouteLength, FARM_TRAVEL_SPEED;__bind('js/farm-travel.js',m=>{farmTravelPosition=m.farmTravelPosition;farmRouteLength=m.farmRouteLength;FARM_TRAVEL_SPEED=m.FARM_TRAVEL_SPEED;});let SAVE_KEY, MODES, GOODS, MISSIONS, FORMATION_TYPES, normalizeSave, formation, baseForces, unitName, lineageRows, formationRoots, formationPool, formationParent, previewFormationMerge, mergeFormations, unmergeFormation, formationResources, autoFormationWeapons, formationMinimum, validateFormation, setFormation, removeFormation, garrisonSplitTypes, splitGarrisonUnit, purchase, purchaseWeapon, claim, settle, applyBattleLosses, applyWarehouseFoodAdjustment, applyRequestedRiceSupply;__bind('js/state.js',m=>{SAVE_KEY=m.SAVE_KEY;MODES=m.MODES;GOODS=m.GOODS;MISSIONS=m.MISSIONS;FORMATION_TYPES=m.FORMATION_TYPES;normalizeSave=m.normalizeSave;formation=m.formation;baseForces=m.baseForces;unitName=m.formationName;lineageRows=m.lineageRows;formationRoots=m.formationRoots;formationPool=m.formationPool;formationParent=m.formationParent;previewFormationMerge=m.previewFormationMerge;mergeFormations=m.mergeFormations;unmergeFormation=m.unmergeFormation;formationResources=m.formationResources;autoFormationWeapons=m.autoFormationWeapons;formationMinimum=m.formationMinimum;validateFormation=m.validateFormation;setFormation=m.setFormation;removeFormation=m.removeFormation;garrisonSplitTypes=m.garrisonSplitTypes;splitGarrisonUnit=m.splitGarrisonUnit;purchase=m.purchase;purchaseWeapon=m.purchaseWeapon;claim=m.claim;settle=m.settle;applyBattleLosses=m.applyBattleLosses;applyWarehouseFoodAdjustment=m.applyWarehouseFoodAdjustment;applyRequestedRiceSupply=m.applyRequestedRiceSupply;});let WEAPONS, weaponById;__bind('js/weapons.js',m=>{WEAPONS=m.WEAPONS;weaponById=m.weaponById;});let Battle;__bind('js/battle.js',m=>{Battle=m.Battle;});let CampaignBattle, campaignDeployment, combatGroups;__bind('js/campaign.js',m=>{CampaignBattle=m.CampaignBattle;campaignDeployment=m.campaignDeployment;combatGroups=m.combatGroups;});let reinforcementCapacity, reinforcementWeapons, validateReinforcement, reinforceFormation, formationEditActivity, rejoinFormation, syncIdleBranches, formationOccupancy, BASE_RESERVE_ACTOR_ID;__bind('js/state.js',m=>{reinforcementCapacity=m.reinforcementCapacity;reinforcementWeapons=m.reinforcementWeapons;validateReinforcement=m.validateReinforcement;reinforceFormation=m.reinforceFormation;formationEditActivity=m.formationEditActivity;rejoinFormation=m.rejoinFormation;syncIdleBranches=m.syncIdleBranches;formationOccupancy=m.formationOccupancy;BASE_RESERVE_ACTOR_ID=m.BASE_RESERVE_ACTOR_ID;});let chooseStartingBase, baseRelocationError, relocateBase, missionProgress;__bind('js/state.js',m=>{chooseStartingBase=m.chooseStartingBase;baseRelocationError=m.baseRelocationError;relocateBase=m.relocateBase;missionProgress=m.missionProgress;});let FOODS, FISH, DISHES, RECRUITMENT, RATIONS, foodStock, rationStock, mealCost, recruitmentInterval, validateDonation, mobilizationStatus, donationTaste, validateCooking, cookDish, hungerStatus, recruitmentFoodCost, mobilizationRecord, migrateVillageMobilization, serveMealNow, enableAllVillageMobilization, setAllVillagesMobilizing, donateAllVillages;__bind('js/logistics.js',m=>{FOODS=m.FOODS;FISH=m.FISH;DISHES=m.DISHES;RECRUITMENT=m.RECRUITMENT;RATIONS=m.RATIONS;foodStock=m.foodStock;rationStock=m.rationStock;mealCost=m.mealCost;recruitmentInterval=m.recruitmentInterval;validateDonation=m.validateDonation;mobilizationStatus=m.mobilizationStatus;donationTaste=m.donationTaste;validateCooking=m.validateCooking;cookDish=m.cookDish;hungerStatus=m.hungerStatus;recruitmentFoodCost=m.recruitmentFoodCost;mobilizationRecord=m.mobilizationRecord;migrateVillageMobilization=m.migrateVillageMobilization;serveMealNow=m.serveMealNow;enableAllVillageMobilization=m.enableAllVillageMobilization;setAllVillagesMobilizing=m.setAllVillagesMobilizing;donateAllVillages=m.donateAllVillages;});let stationTroops, recallGarrison, placeVillageFacility, removeVillageFacility, armoryTransferError, transferArmory, villageUnits, villageLocalUnits, villageOfFormation, villageName, isVillage, villageControlled, villageEnemyTroops, villageRegionId, controlledVillages, garrisonedVillages, ARMORY_BUILD_COST, ARMORY_DISMANTLE_REFUND, missingArmoryMaterials;__bind('js/villages.js',m=>{stationTroops=m.stationTroops;recallGarrison=m.recallGarrison;placeVillageFacility=m.placeVillageFacility;removeVillageFacility=m.removeVillageFacility;armoryTransferError=m.armoryTransferError;transferArmory=m.transferArmory;villageUnits=m.villageUnits;villageLocalUnits=m.villageLocalUnits;villageOfFormation=m.villageOfFormation;villageName=m.villageName;isVillage=m.isVillage;villageControlled=m.villageControlled;villageEnemyTroops=m.villageEnemyTroops;villageRegionId=m.villageRegionId;controlledVillages=m.controlledVillages;garrisonedVillages=m.garrisonedVillages;ARMORY_BUILD_COST=m.ARMORY_BUILD_COST;ARMORY_DISMANTLE_REFUND=m.ARMORY_DISMANTLE_REFUND;missingArmoryMaterials=m.missingArmoryMaterials;});let availableWorkforce, dutyTypes, DUTY_TYPES, PROJECT_UNIT_LIMIT, taskWorkersFrom;__bind('js/workforce.js',m=>{availableWorkforce=m.availableWorkforce;dutyTypes=m.dutyTypes;DUTY_TYPES=m.DUTY_TYPES;PROJECT_UNIT_LIMIT=m.PROJECT_UNIT_LIMIT;taskWorkersFrom=m.taskWorkersFrom;});let populationRule, villagePopulation;__bind('js/population.js',m=>{populationRule=m.populationRule;villagePopulation=m.villagePopulation;});let syncShop, purchaseQuote, shopAvailable, shopSells;__bind('js/shop.js',m=>{syncShop=m.syncShop;purchaseQuote=m.purchaseQuote;shopAvailable=m.shopAvailable;shopSells=m.shopSells;});let FARM, fieldCooldown, CROPS, helpHarvestYield, farmWorkers, farmTasks, farmTaskAt, farmLocalUnits, farmReserveAvailable, startFarming, cancelFarming, formationActivity, activityLabel, assignFormations, releaseFormations;__bind('js/base.js',m=>{FARM=m.FARM;fieldCooldown=m.fieldCooldown;CROPS=m.CROPS;helpHarvestYield=m.helpHarvestYield;farmWorkers=m.farmWorkers;farmTasks=m.farmTasks;farmTaskAt=m.farmTaskAt;farmLocalUnits=m.farmLocalUnits;farmReserveAvailable=m.farmReserveAvailable;startFarming=m.startFarming;cancelFarming=m.cancelFarming;formationActivity=m.formationActivity;activityLabel=m.activityLabel;assignFormations=m.assignFormations;releaseFormations=m.releaseFormations;});let advanceEconomy;__bind('js/economy.js',m=>{advanceEconomy=m.advanceEconomy;});let PRODUCTS, FACILITY_INTERVAL, facilityRunning, productionInventory, productionCapacity, productionMaterialLimit, startProduction, recallFacility;__bind('js/facilities.js',m=>{PRODUCTS=m.PRODUCTS;FACILITY_INTERVAL=m.FACILITY_INTERVAL;facilityRunning=m.facilityRunning;productionInventory=m.productionInventory;productionCapacity=m.productionCapacity;productionMaterialLimit=m.productionMaterialLimit;startProduction=m.startProduction;recallFacility=m.recallFacility;});let MATERIALS, MATERIAL_LIMIT, GATHER_INTERVAL, gatheringOptions, gatheringName, gatheringStock, gatheringEntries, availableGatheringUnits, startGathering, stopGathering;__bind('js/gathering.js',m=>{MATERIALS=m.MATERIALS;MATERIAL_LIMIT=m.MATERIAL_LIMIT;GATHER_INTERVAL=m.GATHER_INTERVAL;gatheringOptions=m.gatheringOptions;gatheringName=m.gatheringName;gatheringStock=m.gatheringStock;gatheringEntries=m.gatheringEntries;availableGatheringUnits=m.availableGatheringUnits;startGathering=m.startGathering;stopGathering=m.stopGathering;});let RAID_ALERT_LIMIT, advanceRaids, advanceEnemyOccupation, raidSite, raidOrigin, raidApproaching, raidMarch, raidInterception, raidReportStatus, raidRepelled, raidDeployment, raidDefenders, assignRaidDefenders, makeRaidBattle, autoDefendRaid, settleRaid, finishRaid;__bind('js/raids.js',m=>{RAID_ALERT_LIMIT=m.RAID_ALERT_LIMIT;advanceRaids=m.advanceRaids;advanceEnemyOccupation=m.advanceEnemyOccupation;raidSite=m.raidSite;raidOrigin=m.raidOrigin;raidApproaching=m.raidApproaching;raidMarch=m.raidMarch;raidInterception=m.raidInterception;raidReportStatus=m.raidReportStatus;raidRepelled=m.raidRepelled;raidDeployment=m.raidDeployment;raidDefenders=m.raidDefenders;assignRaidDefenders=m.assignRaidDefenders;makeRaidBattle=m.makeRaidBattle;autoDefendRaid=m.autoDefendRaid;settleRaid=m.settleRaid;finishRaid=m.finishRaid;});let initMusic, setMusicEnabled, setMusicPaused, updateMusic, unlockMusic, pumpMusic;__bind('js/music.js',m=>{initMusic=m.initMusic;setMusicEnabled=m.setMusicEnabled;setMusicPaused=m.setMusicPaused;updateMusic=m.updateMusic;unlockMusic=m.unlockMusic;pumpMusic=m.pumpMusic;});const inside=(p,b)=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h
 const number=value=>value.toLocaleString()
 function drawLoadoutBadge(c,unit,x,y){
   const equipped=Object.values(unit.weapons).reduce((sum,count)=>sum+count,0)
@@ -196,13 +196,14 @@ function drawLoadoutBadge(c,unit,x,y){
   box(c,x,y-9,width,18,fill,3)
   text(c,label,x+width/2,y,label.length>13?11:13,color,700,'center')
 }
+const weaponSupplyLabels=counts=>WEAPONS.filter(weapon=>counts?.[weapon.id]>0).map(weapon=>`${weapon.name} ×${number(counts[weapon.id])}`)
 function capturedSuppliesLabel(result){
-  const items=WEAPONS.filter(weapon=>result.capturedWeapons?.[weapon.id]>0).map(weapon=>`${weapon.name} ×${number(result.capturedWeapons[weapon.id])}`)
+  const items=weaponSupplyLabels(result.capturedWeapons)
   if(result.capturedBullets>0)items.push(`子弹 ${number(result.capturedBullets)} 发`)
   return items.join(' · ')
 }
 const gatheringAction=id=>id===FISH.id?'捕鱼':`采集${gatheringName(id)}`
-const recipeLabel=product=>Object.entries(product.recipe).map(([id,cost])=>`${cost} ${gatheringName(id)}`).join(' + ')
+const materialAmountsLabel=amounts=>Object.entries(amounts).map(([id,amount])=>`${number(amount)} ${gatheringName(id)}`).join(' + ')
 const rosterRowX=depth=>312+Math.min(depth,3)*28
 const DISPATCH_VIEW={x:312,y:353,w:813,h:222}
 const DISPATCH_ROW_HEIGHT=53,DISPATCH_CARD_HEIGHT=43
@@ -295,20 +296,33 @@ function dispatchSelection(rows,ids){
   const ready=new Map(rows.filter(row=>row.ready).map(({unit})=>[unit.id,unit.troops])),selected=ids.filter(id=>ready.has(id))
   return {ids:selected,total:selected.reduce((sum,id)=>sum+ready.get(id),0)}
 }
-const mapGarrisonLines=(units,s=null)=>{
+const mapGarrisonLines=(units,localTroops=unit=>unit.troops)=>{
   const lines=[]
   for(const {unit} of lineageRows(units)){
     // 部分人员外出（代耕、生产等）时，村里只显示留守人数，并注明外派人数。
-    const away=s?unit.troops-availableWorkforce(s,unit.id):0
-    const name=away>0?`${unitName(unit)} ${unit.troops-away}人(外${away})`:`${unitName(unit)} ${unit.troops}人`,last=lines.length-1
+    const present=localTroops(unit),away=unit.troops-present
+    const name=away>0?`${unitName(unit)} ${present}人(外${away})`:`${unitName(unit)} ${present}人`,last=lines.length-1
     if(last>=0&&lines[last].length+name.length+1<=14)lines[last]+='、'+name
     else if(lines.length<2)lines.push(name)
     else{lines[1]=lines[1].split('、')[0]+'等'+units.length+'支';break}
   }
   return lines
 }
+function baseDisplayForces(s){
+  const home=raidSite(s.baseVillageId)
+  if(!home)return {...baseForces(s),garrisonCount:0}
+  const defenders=raidDefenders(s,home),counts=new Map(defenders.map(unit=>[unit.id,unit.troops]))
+  const garrison=villageUnits(s,home.id),garrisonIds=new Set(garrison.map(unit=>unit.id))
+  const otherUnits=formationRoots(s).filter(unit=>counts.has(unit.id)&&!garrisonIds.has(unit.id))
+  return {
+    units:[...garrison,...otherUnits],garrisonCount:garrison.length,
+    unassigned:counts.get(BASE_RESERVE_ACTOR_ID)||0,
+    troops:defenders.reduce((total,unit)=>total+unit.troops,0),
+    localTroops:unit=>counts.get(unit.id)||0
+  }
+}
 const mapBaseLines=base=>{
-  const lines=mapGarrisonLines(base.units)
+  const lines=mapGarrisonLines(base.units,base.localTroops)
   if(base.unassigned>0){
     const label=`未编 ${base.unassigned}人`,last=lines.length-1
     if(last>=0&&lines[last].length+label.length+1<=14)lines[last]+='、'+label
@@ -326,7 +340,10 @@ class Game {
     this.save=normalizeSave(stored)
     const adjusted=!!stored&&applyWarehouseFoodAdjustment(this.save)
     const supplied=!!stored&&options.applyRequestedRiceSupply===true&&applyRequestedRiceSupply(this.save)
-    const removedMedical=!!stored&&Object.hasOwn(stored,'wounded')
+    const removedMedical=stored&&(
+      ['medkits','bandages','wounded','medicalTasks','bandageTask','heavyTreatmentStages','pendingBattleCasualties'].some(key=>Object.hasOwn(stored,key))||
+      ['medkits','bandages'].some(key=>Object.hasOwn(stored.shopStock??{},key))||Object.hasOwn(stored.facilityVillages??{},'medical')
+    )
     const removedTraining=!!stored&&['trainingTask','villageTrainingTasks','trainingSessions','reserveTrainingXp'].some(key=>Object.hasOwn(stored,key))
     const migrated=!!stored&&migrateVillageMobilization(this.save)
     const renumbered=!!stored&&stored.formationNumberVersion!==this.save.formationNumberVersion
@@ -511,7 +528,9 @@ class Game {
     const engagedRegionId=this.scene==='battle'&&!this.battle?.done?this.battle?.regionId:null
     const raids=advanceRaids(this.save,seconds,random,manualRaidId,engagedRegionId)
     const raidReports=raids.due.map(id=>autoDefendRaid(this.save,id)).filter(Boolean)
+    const lostBase=raidReports.find(report=>report.baseLost)
     const occupation=advanceEnemyOccupation(this.save,seconds,random,engagedRegionId)
+    if(lostBase&&this.scene==='world-map')this.openWorldMap()
     if(raids.changed||raidReports.length||occupation||this.scene==='world-map'&&!this.modal&&(this.save.raidAlerts.length||this.save.enemyOccupation))this.dirty=true
     this.branchSyncElapsed=(this.branchSyncElapsed||0)+seconds
     let branchMoved=false
@@ -529,7 +548,9 @@ class Game {
     if(raidCountdown||result.recruited||result.meals||result.populationGrown||result.harvests.length||facilityEvent||restocked||((['village','recruitment','farm','gathering','base-armory'].includes(this.modal)&&this.logisticsDrawElapsed>=.2||this.modal==='shop'&&this.logisticsDrawElapsed>=1||this.scene==='world-map'&&!this.modal&&Object.keys(this.save.fieldCooldowns||{}).length>0&&this.logisticsDrawElapsed>=1))){this.dirty=true;this.logisticsDrawElapsed=0}
     if(raids.changed||raidReports.length||occupation||branchMoved||returnedFarms.length||result.recruited||result.meals||result.harvests.length||facilityEvent||restocked||this.logisticsSaveElapsed>=5){this.persist();this.logisticsSaveElapsed=0}
     const incoming=occupation?.alert||raids.alert
-    if(incoming)this.notify(`${raidSite(incoming.siteId).name}遭到敌袭 · ${raidOrigin(incoming).name}出兵 ${incoming.force} 人`)
+    if(lostBase)this.notify(`${raidSite(lostBase.siteId).name}失守 · 请选择新的根据地中心`)
+    else if(raids.intercepted.length)this.notify(raids.intercepted.map(alert=>`${raidSite(alert.siteId).name}拦下敌军 ${alert.force} 人`).join('、'))
+    else if(incoming)this.notify(`${raidSite(incoming.siteId).name}遭到敌袭 · ${raidOrigin(incoming).name}出兵 ${incoming.force} 人`)
     else if(raidReports.length)this.notify(raidReports.map(report=>raidSite(report.siteId).name+' · '+raidReportStatus(report)).join('、'))
     else if(occupation?.occupied)this.notify(`${raidSite(occupation.occupied.siteId).name}已被敌军占领 · 驻军 ${number(occupation.occupied.force)} 人`)
     else if(!previous.disabled&&hunger.disabled)this.notify('部队极度饥饿，火力和行动能力下降，请及时供餐')
@@ -738,6 +759,9 @@ class Game {
   }
   openWorldMap(){
     this.scene='world-map';this.modal=null;this.localVillage=null;this.garrisonTransfer=null;this.relocatingBase=false;this.relocatingArmory=false;this.cancelTouch()
+    if(this.choosingBase===false&&this.save.baseVillageId===null){
+      this.choosingBase=true;this.mapSelected=null;this.mapCamera=fitCamera({view:this.mapView})
+    }
     if(!this.choosingBase)this.mapSelected=mapLocation(this.mapSelected,this.save).id
     this.mapCamera||=this.choosingBase?fitCamera({}):createCamera(mapBase(this.save))
     updateMusic(this.scene);this.dirty=true
@@ -863,6 +887,8 @@ class Game {
     if(this.scene==='battle'&&this.battle&&!this.battle.done){this.notify('请先结束当前战斗');return}
     const deployment=raidDeployment(this.save,id)
     if(!deployment.ok){this.notify(deployment.message);return}
+    const checkpoint=raidInterception(this.save,deployment.alert)
+    if(checkpoint){this.notify(`敌军将先经过${checkpoint.name}，抵达后可在那里接管战斗`);return}
     if(!assignRaidDefenders(this.save,deployment)){this.notify('驻军状态已变化，请重新查看警报');return}
     this.battle=makeRaidBattle(deployment,this.save)
     this.scene='battle';this.modal=null;this.result=null;this.battleRosterPage=0;this.pressed=false;this.syncBattleReadiness()
@@ -887,7 +913,7 @@ class Game {
       const y=top+46+i*62,site=raidSite(entry.siteId),outcome=raidReportStatus(entry),origin=raidOrigin(entry)
       box(c,33,y,220,54,C.raised,2,C.line)
       text(c,site.name,44,y+17,17,C.ink,700)
-      text(c,outcome||(origin?`${origin.name} · 来敌 ${entry.force} 人`:`来敌 ${entry.force} 人`),44,y+39,13,outcome?C.muted:C.red,600)
+      text(c,outcome||(raidSite(entry.interceptedTargetId)?`拦截来敌 ${entry.force} 人`:origin?`${origin.name} · 来敌 ${entry.force} 人`:`来敌 ${entry.force} 人`),44,y+39,13,outcome?C.muted:C.red,600)
       text(c,outcome?'战报 ›':raidApproaching(entry)?'行军中 ›':'交战中 ›',243,y+17,14,C.olive,600,'right')
       this.buttons.push({id:'raid-alert-'+entry.id,x:33,y,w:220,h:54,fn:()=>this.openRaid(entry.id)})
     })
@@ -909,7 +935,11 @@ class Game {
         text(c,`金币 +${report.coins}`,312,452,18,C.gold)
         const captured=capturedSuppliesLabel(report)
         if(captured)text(c,'缴获入库 · '+captured,312,494,17,C.olive)
+        const recovered=weaponSupplyLabels(report.recoveredWeapons).join(' · ')
+        if(recovered)text(c,'打扫战场 · 回收己方武器 · '+recovered,312,captured?528:494,17,C.olive)
       }
+      const originalTarget=raidSite(report.interceptedTargetId)
+      if(originalTarget)text(c,`沿路拦截 · 敌军原目标 ${originalTarget.name}`,312,565,15,C.muted)
       this.button('raid-back',312,615,180,42,'返回大地图',()=>{this.modal=null},'light')
       return
     }
@@ -920,13 +950,16 @@ class Game {
     text(c,`${origin?`来自 ${origin.name} · `:''}来敌 ${info.alert.force} 人`,334,325,19,C.blue,600)
     const unarmed=info.unarmedTroops?`（${number(info.unarmedTroops)} 人无武器）`:''
     text(c,`我方可出战 ${info.units.length} 支 / ${number(info.troops)} 人${unarmed}`,334,356,19,C.gold,600)
-    text(c,info.site.type==='village'?'村内驻军、待命和驻厂人员一起参战。':'本地驻军、待命和采集部队一起参战。',334,384,15,C.muted)
+    const baseDefense=info.site.id===this.save.baseVillageId
+    text(c,baseDefense?'根据地中心的留守编制和未编人员全部出战。':info.site.type==='village'?'村内驻军、待命和驻厂人员一起参战。':'本地驻军、待命和采集部队一起参战。',334,384,15,C.muted)
     text(c,'缺弹或无枪的士兵近战，承受的攻击伤害更大。',334,410,15,C.gold)
     text(c,`${Math.ceil(info.alert.responseSeconds)} 秒后自动结算 · 可在倒计时结束前接管`,312,455,18,C.ink)
+    const originalTarget=raidSite(info.alert.interceptedTargetId),checkpoint=raidInterception(this.save,info.alert)
     if(!info.ok)text(c,info.message,312,491,16,C.gold)
+    if(originalTarget||checkpoint)text(c,originalTarget?`沿路拦截 · 敌军原目标 ${originalTarget.name}`:`敌军将先经过${checkpoint.name}，抵达后可在那里接管战斗`,312,info.ok?491:522,16,C.gold)
     this.button('raid-back',312,615,180,42,'返回大地图',()=>{this.modal=null},'light')
     if(approaching)this.button('raid-route',508,615,280,42,'查看行军路线',()=>this.showRaidRoute(info.alert),'light')
-    this.button('raid-manual',827,615,298,42,'亲自指挥',()=>this.beginRaid(id),info.ok?'accent':'light')
+    this.button('raid-manual',827,615,298,42,'亲自指挥',()=>this.beginRaid(id),info.ok&&!checkpoint?'accent':'light')
   }
   drawRaidRoutes(markers){
     const c=this.ctx
@@ -1198,11 +1231,11 @@ class Game {
       c.restore()
       if(!picking)this.buttons.push({id:'map-field-'+field.id,x,y,w:right-x,h:end-y,fn:()=>this.openMapField(field.id)})
     }
-    const base=home?baseForces(s):null
+    const base=home?baseDisplayForces(s):null
     for(const location of sites){
       const isBase=location.id===home?.roadId,site=isBase?home:location
       const position=mapToScreen(camera,site),p={x:0,y:0},markerScale=mapMarkerScale(camera)
-      const garrison=isBase?base.units:site.strategic?regionUnits(s,site.id):villageUnits(s,site.id),stationLines=isBase?mapBaseLines(base):mapGarrisonLines(garrison,s)
+      const garrison=isBase?base.units:site.strategic?regionUnits(s,site.id):villageUnits(s,site.id),stationLines=isBase?mapBaseLines(base):mapGarrisonLines(garrison,unit=>availableWorkforce(s,unit.id))
       const owner=isBase?'player':regionOwner(s,site.id),style=MAP_TERRAIN_STYLES[site.type],isCity=site.type==='city',isVillageSite=site.type==='village'
       const siteVillageId=site.villageId??site.id
       const hasFacility=(isBase||isVillageSite)&&owner!=='enemy'&&s.facilityVillages.armory===siteVillageId
@@ -1272,7 +1305,8 @@ class Game {
     circle(c,43,712,4,isBase?C.gold:C.olive)
     text(c,selected.name,60,712,22,C.ink,700)
     text(c,isBase?`根据地中心 · 兵力 ${base.troops.toLocaleString()} 人`:selected.strategic?`${selected.direction} · ${REGION_KINDS[selected.type]}`:selected.direction+' · 村庄',235,712,14,isBase?C.gold:C.olive,600)
-    text(c,transfer?`从 ${mapLocation(transfer.originId).name} 出发 · 抵达敌占据点后准备交战`:selectedEnemy?'敌军占领 · 点击查看守军及进攻入口。':selected.strategic?'点击查看守军，选择部队占领或进攻。':isBase?`未派出兵力留守：${base.units.length} 支编制 · 未编 ${base.unassigned.toLocaleString()} 人`:'周边田地可派兵帮助乡亲耕种。',40,736,13,C.muted)
+    const baseSummary=isBase&&`${base.garrisonCount?`本村驻军 ${base.garrisonCount} 支 · 其他留守 ${base.units.length-base.garrisonCount} 支`:`未派出兵力留守：${base.units.length} 支编制`} · 未编 ${number(base.unassigned)} 人`
+    text(c,transfer?`从 ${mapLocation(transfer.originId).name} 出发 · 抵达敌占据点后准备交战`:selectedEnemy?'敌军占领 · 点击查看守军及进攻入口。':selected.strategic?'点击查看守军，选择部队占领或进攻。':isBase?baseSummary:'周边田地可派兵帮助乡亲耕种。',40,736,13,C.muted)
     this.button('map-location-action',455,704,180,40,transfer?'取消转移':selectedEnemy||selected.strategic?'查看地区':isBase?'进入根据地':'村庄管理',()=>{
       if(transfer)this.cancelGarrisonTransfer()
       else if(isBase)this.open('base')
@@ -1597,16 +1631,16 @@ class Game {
     else this.notify('商品状态已更新，请重新选择')
   }
   drawBase(){
-    const c=this.ctx,s=this.save,base=baseForces(s)
+    const c=this.ctx,s=this.save,base=baseDisplayForces(s)
     const home=mapBase(s)
     icon(c,'warehouse',720,318,72,C.gold);text(c,home.name,720,392,34,C.ink,700,'center')
     text(c,`根据地指挥中心 · 留守兵力 ${base.troops.toLocaleString()} 人`,720,436,19,C.gold,700,'center')
-    text(c,`未派出：${base.units.length} 支编制 / 未编 ${base.unassigned.toLocaleString()} 人`,720,474,17,C.ink,600,'center')
+    text(c,`本村驻军 ${base.garrisonCount} 支 · 其他留守 ${base.units.length-base.garrisonCount} 支 · 未编 ${number(base.unassigned)} 人`,720,474,17,C.ink,600,'center')
     const villages=controlledVillages(s),units=villages.flatMap(v=>villageUnits(s,v.id)),troops=units.reduce((sum,u)=>sum+u.troops,0)
     text(c,'名下 '+villages.length+' 个村庄 · 驻军 '+units.length+' 支 / '+troops.toLocaleString()+' 人',720,512,18,C.olive,600,'center')
-    text(c,'未派出的编制与未编人员留守于此；村庄驻防与耕田请前往大地图。',720,553,15,C.muted,400,'center')
+    if(s.baseVillageId!=null)text(c,'从「管理本村驻军」可查看、转移或撤回本村的驻防部队。',720,553,15,C.muted,400,'center')
     this.button('base-home',312,615,192,42,'返回指挥部',()=>this.home(),'light')
-    if(s.baseVillageId!=null)this.button('base-village',519,615,192,42,'本村管理',()=>this.openVillage(home.villageId),'light')
+    if(s.baseVillageId!=null)this.button('base-village',519,615,192,42,'管理本村驻军',()=>this.openVillage(home.villageId),'accent')
     this.button('base-map',726,615,192,42,'定位根据地',()=>{this.openWorldMap();this.mapSelected='base';focusCamera(this.mapCamera,home)},'light')
     if(s.baseVillageId!=null)this.button('base-relocate',933,615,192,42,'迁移根据地',()=>this.openBaseRelocation(),'accent')
   }
@@ -1617,11 +1651,11 @@ class Game {
   }
   confirmArmoryRemoval(){
     const id=this.villageId
-    wx.showModal({title:'拆除本村兵工厂',content:'会结束所有生产项目，保留已入库的成品和仓库材料。',confirmText:'拆除',success:response=>{
+    wx.showModal({title:'拆除本村兵工厂',content:`会结束所有生产项目。拆除可回收 ${materialAmountsLabel(ARMORY_DISMANTLE_REFUND)}。`,confirmText:'拆除',success:response=>{
       if(!response.confirm)return
       const result=removeVillageFacility(this.save,'armory',id)
       if(!result.ok){this.notify(result.message);return}
-      this.persist();this.notify('兵工厂已拆除')
+      this.persist();this.notify(`兵工厂已拆除 · 回收入库 ${materialAmountsLabel(result.refunded)}`)
     }})
   }
   drawVillage(){
@@ -1665,9 +1699,15 @@ class Game {
       this.button('village-armory',312,582,255,36,'进入本村兵工厂',()=>this.manageVillageArmory(),'dark')
       this.button('village-transfer-armory',591,582,255,36,'转移兵工厂',()=>this.openArmoryTransfer(),'accent')
       this.button('village-remove-armory',870,582,255,36,'拆除兵工厂',()=>this.confirmArmoryRemoval(),'light')
-    }else if(armory===null)this.button('village-armory',312,582,393,36,'将兵工厂设在本村',()=>this.manageVillageArmory(),'dark')
+    }else if(armory===null){
+      const missing=missingArmoryMaterials(s)
+      this.button('village-armory',312,582,393,36,'在本村建立兵工厂',()=>this.manageVillageArmory(),missing.length?'light':'accent')
+      text(c,`建造需要 ${materialAmountsLabel(ARMORY_BUILD_COST)}`,724,590,15,C.ink,600)
+      const current=Object.fromEntries(Object.keys(ARMORY_BUILD_COST).map(material=>[material,s.materials[material]]))
+      text(c,`仓库现有 ${materialAmountsLabel(current)}`,724,612,14,missing.length?C.gold:C.olive)
+    }
     else if(!armoryTransferError(s,id))this.button('village-transfer-armory',312,582,393,36,'将兵工厂迁入本村',()=>this.openArmoryTransfer(id),'dark')
-    this.button('village-back',312,632,230,30,'返回大地图',()=>this.openWorldMap(),'light')
+    this.button('village-back',312,632,230,30,id===s.baseVillageId?'返回根据地':'返回大地图',()=>id===s.baseVillageId?this.open('base'):this.openWorldMap(),'light')
     if(s.baseVillageId!=null&&s.baseVillageId!==id)this.button('village-relocate-base',886,632,239,30,'设为根据地中心',()=>this.openBaseRelocation(id),'accent')
   }
   openGarrisonSplit(unitId,source='village'){
@@ -1902,7 +1942,7 @@ class Game {
     const rate=`每 ${product.workers} 人产 1 ${unit}`
     text(c,`每 ${minutes} 分钟 · ${rate}`,312,324,17,C.ink,600)
     text(c,`已派 ${deployed} 支`,1125,324,15,C.olive,600,'right')
-    text(c,`${product.name}库存 ${number(productionInventory(s,product))} · 每 ${recipeQuantity} ${unit}消耗 ${recipeLabel(product)} · 仓库矿石 ${number(s.materials.ore)} / 木头 ${number(s.materials.wood)}`,312,355,16,C.muted)
+    text(c,`${product.name}库存 ${number(productionInventory(s,product))} · 每 ${recipeQuantity} ${unit}消耗 ${materialAmountsLabel(product.recipe)} · 仓库矿石 ${number(s.materials.ore)} / 木头 ${number(s.materials.wood)}`,312,355,16,C.muted)
     if(task&&!adding){
       text(c,`按当前库存预计本轮可产 ${productionCapacity(s,product,task.cycleWorkers??task.workers)} ${unit}，各项目共用材料`,312,387,16,C.gold)
       this.drawFacilityTask(id,task,product)
@@ -2339,14 +2379,13 @@ class Game {
     if(!items.length)this.drawEmptyInventory()
     items.forEach((item,i)=>{
       const x=312+(i%2)*420,y=312+Math.floor(i/2)*109
-      box(c,x,y,393,100,C.raised,2,C.line);icon(c,item.icon,x+40,y+33,34,category==='medical'?C.olive:C.gold)
+      box(c,x,y,393,100,C.raised,2,C.line);icon(c,item.icon,x+40,y+33,34,C.gold)
       text(c,item.name,x+76,y+23,21,C.ink,700)
       text(c,item.desc,x+76,y+47,13,C.muted)
       text(c,type==='shop'?`持有 ${s[item.id]} · 待售 ${shopAvailable(s,item.id)} ${item.unit}`:`持有 ${s[item.id]} ${item.unit}`,x+16,y+78,14,C.olive,600)
       if(type==='shop'){const q=purchaseQuote(s,item);this.button('buy-'+item.id,x+218,y+58,161,34,q.amount?`${q.cost}金币/${q.amount}${item.unit}`:'已售罄',()=>this.buyShopItem(item),q.amount?'accent':'light')}
     })
-    const hint=category==='ammo'?'步枪、手枪、轻机枪、狙击枪共用子弹，迫击炮使用炮弹。':'医疗包和绷带作为物资储备。'
-    text(c,hint,312,655,15,C.muted)
+    text(c,'步枪、手枪、轻机枪、狙击枪共用子弹，迫击炮使用炮弹。',312,655,15,C.muted)
   }
   drawModal(){
     const c=this.ctx,s=this.save,type=this.modal
@@ -2407,8 +2446,8 @@ class Game {
     }else if(type==='kitchen'){
       this.drawKitchen()
     }else if(type==='warehouse'||type==='shop'){
-      const tabs=[['weapons','枪械区'],['ammo','弹药区'],['medical','医疗区'],['logistics','后勤区'],...(type==='warehouse'?[['dishes','熟食区'],['materials','材料区']]:[])]
-      const step=type==='warehouse'?116:157,width=step-12
+      const tabs=[['weapons','枪械区'],['ammo','弹药区'],['logistics','后勤区'],...(type==='warehouse'?[['dishes','熟食区'],['materials','材料区']]:[])]
+      const step=type==='warehouse'?135:157,width=step-12
       tabs.forEach(([id,label],i)=>{
         this.button('tab-'+id,312+i*step,255,width,44,label,()=>{this.inventoryTab=id},this.inventoryTab===id?'accent':'light')
       })
@@ -2441,6 +2480,7 @@ class Game {
       text(c,raid&&!raidRepelled(this.battle)?'撤离后，存活的敌军会占领该据点。':'本次行动将结束，获得已击败敌军的战果奖励。',720,350,22,C.ink,600,'center');this.button('cancel',350,510,350,65,'继续作战',()=>{this.modal=null},'light');this.button('confirm-retreat',740,510,350,65,'结束并结算',()=>{this.battle.done=true;this.battle.won=!!raid&&raidRepelled(this.battle);this.finish()},'dark')
     }else if(type==='result'){
       const r=this.result,b=this.battle;icon(c,b.won?'flag':'shield',720,302,55,b.won?C.olive:C.gold)
+      const recovered=weaponSupplyLabels(r.recoveredWeapons).join(' · '),actionsY=recovered?592:563
       const outcome=b.raidId?`${b.regionName} · ${b.won?'已击退敌袭':r.raid?.occupied?'失守，敌军已占领':'未能击退敌袭，已结算战损'}`:b.regionId&&b.won?`${b.regionName}已占领，幸存部队留驻。`:b.won?'阵地已控制，行动目标达成。':'本次行动已结束，请整备后再战。'
       text(c,outcome,720,362,26,C.ink,700,'center');text(c,`歼敌 ${r.kills}${b.units?' 人':''}${b.raidId?`    ·    我方出战 ${number(b.maxHp)} 人`:`    ·    第 ${r.wave} 波`}    ·    ${Math.floor(b.time)} 秒`,720,410,18,C.muted,400,'center')
       text(c,`+ ${r.coins} 金币`,720,469,28,C.gold,700,'center')
@@ -2448,9 +2488,14 @@ class Game {
       if(b.mode==='campaign'){
         const captured=capturedSuppliesLabel(r)
         text(c,captured?'缴获入库：'+captured:'本次无缴获',720,544,15,captured?C.olive:C.muted,600,'center')
+        if(recovered)text(c,'打扫战场 · 回收己方武器 · '+recovered,720,570,15,C.olive,600,'center')
       }
-      this.button('home',312,563,280,65,'返回指挥部',()=>this.home(),'light')
-      this.button('next',620,563,505,65,b.raidId?'查看驻地':b.regionId?'查看交战地区':b.won&&b.mode==='campaign'&&b.level<12?'进军下一关':'再次部署',()=>{
+      if(this.choosingBase===false&&this.save.baseVillageId===null){
+        this.button('home',486,actionsY,468,65,'选择新的根据地中心',()=>this.home(),'accent')
+        return
+      }
+      this.button('home',312,actionsY,280,65,'返回指挥部',()=>this.home(),'light')
+      this.button('next',620,actionsY,505,65,b.raidId?'查看驻地':b.regionId?'查看交战地区':b.won&&b.mode==='campaign'&&b.level<12?'进军下一关':'再次部署',()=>{
         if(b.raidId){
           const site=raidSite(b.raidSiteId)
           this.home()
@@ -2641,8 +2686,6 @@ function icon(c,type,x,y,size=28,color=C.ink){
   else if(type==='ammo'){for(const dx of [-7,0,7]){path([[dx-2,10],[dx-2,-5],[dx,-11],[dx+2,-5],[dx+2,10],[dx-2,10]]);line(c,dx-2,5,dx+2,5,color)}}
   else if(type==='shell'){path([[-6,11],[-6,-4],[0,-13],[6,-4],[6,11],[-6,11]]);line(c,-9,11,9,11,color,3);line(c,-6,4,6,4,color,2)}
   else if(type==='grenade'){box(c,-8,-3,16,17,null,5,color);box(c,-4,-9,8,6,null,1,color);path([[0,-10],[8,-10],[10,-5]]);line(c,-7,3,7,3,color);line(c,0,-2,0,12,color)}
-  else if(type==='bandage'){c.rotate(-.55);box(c,-13,-6,26,12,null,4,color);box(c,-5,-5,10,10,null,1,color);circle(c,-9,0,1,color);circle(c,9,0,1,color)}
-  else if(type==='medical'){box(c,-11,-8,22,19,null,2,color);path([[-5,-8],[-5,-12],[5,-12],[5,-8]]);line(c,-5,1,5,1,color,3);line(c,0,-4,0,6,color,3)}
   else if(type==='target'){c.beginPath();c.arc(0,0,9,0,Math.PI*2);c.stroke();line(c,-14,0,14,0,color);line(c,0,-14,0,14,color);circle(c,0,0,3,color)}
   else if(type==='lock'){box(c,-8,-1,16,13,null,2,color);c.beginPath();c.arc(0,-1,5,Math.PI,Math.PI*2);c.stroke();circle(c,0,5,1.5,color)}
   else if(type==='flag'){path([[-8,13],[-8,-12],[10,-12],[5,-5],[10,1],[-8,1]])}
@@ -3573,6 +3616,7 @@ __exp.freshRegions=freshRegions;__exp.regionRecord=regionRecord;__exp.regionUnit
 };
 __mods["js/state.js"]=function(__exp,__req,__bind){
 let WEAPONS, restoreBulletCount;__bind('js/weapons.js',m=>{WEAPONS=m.WEAPONS;restoreBulletCount=m.restoreBulletCount;});let FOODS, FISH, DISHES, freshLogistics, RECRUITMENT, RATIONS, HUNGER, recruitmentFoodCost, recruitmentSupport, VILLAGE_SUPPLY_IDS, normalizeVillageMobilization;__bind('js/logistics.js',m=>{FOODS=m.FOODS;FISH=m.FISH;DISHES=m.DISHES;freshLogistics=m.freshLogistics;RECRUITMENT=m.RECRUITMENT;RATIONS=m.RATIONS;HUNGER=m.HUNGER;recruitmentFoodCost=m.recruitmentFoodCost;recruitmentSupport=m.recruitmentSupport;VILLAGE_SUPPLY_IDS=m.VILLAGE_SUPPLY_IDS;normalizeVillageMobilization=m.normalizeVillageMobilization;});let freshShop, normalizeShop, buyStock;__bind('js/shop.js',m=>{freshShop=m.freshShop;normalizeShop=m.normalizeShop;buyStock=m.buyStock;});let freshBase, normalizeBase, farmWorkers, farmReserveWorkers, farmTasks, formationActivity, activityLabel, activeFormationIds;__bind('js/base.js',m=>{freshBase=m.freshBase;normalizeBase=m.normalizeBase;farmWorkers=m.farmWorkers;farmReserveWorkers=m.farmReserveWorkers;farmTasks=m.farmTasks;formationActivity=m.formationActivity;activityLabel=m.activityLabel;activeFormationIds=m.activeFormationIds;});let applyProductionLosses, freshFacilities, normalizeFacilities;__bind('js/facilities.js',m=>{applyProductionLosses=m.applyProductionLosses;freshFacilities=m.freshFacilities;normalizeFacilities=m.normalizeFacilities;});let freshVillages, normalizeVillages, reconcileVillageGarrisons, villageOfFormation, villageEnemyTroops;__bind('js/villages.js',m=>{freshVillages=m.freshVillages;normalizeVillages=m.normalizeVillages;reconcileVillageGarrisons=m.reconcileVillageGarrisons;villageOfFormation=m.villageOfFormation;villageEnemyTroops=m.villageEnemyTroops;});let ALL_VILLAGES, FORMER_BASE_VILLAGE_ID, mapLocation, mapRegion, mapVillage;__bind('js/world-map.js',m=>{ALL_VILLAGES=m.ALL_VILLAGES;FORMER_BASE_VILLAGE_ID=m.FORMER_BASE_VILLAGE_ID;mapLocation=m.mapLocation;mapRegion=m.mapRegion;mapVillage=m.mapVillage;});let freshRegions, generateStartingRegions, normalizeRegions;__bind('js/regions.js',m=>{freshRegions=m.freshRegions;generateStartingRegions=m.generateStartingRegions;normalizeRegions=m.normalizeRegions;});let freshMarches, normalizeMarches, marchOrigin;__bind('js/marching.js',m=>{freshMarches=m.freshMarches;normalizeMarches=m.normalizeMarches;marchOrigin=m.marchOrigin;});let freshGathering, normalizeGathering;__bind('js/gathering.js',m=>{freshGathering=m.freshGathering;normalizeGathering=m.normalizeGathering;});let freshRaids, normalizeRaids;__bind('js/raids.js',m=>{freshRaids=m.freshRaids;normalizeRaids=m.normalizeRaids;});const SAVE_KEY = 'zhihuiqianxian.save.v1'
+const BASE_RESERVE_ACTOR_ID ='base-reserve'
 const FORMATION_NUMBER_VERSION=1
 const FORMATION_TYPES = [
   {id:'squad',name:'班',min:7,max:12},
@@ -3882,19 +3926,25 @@ function inheritFallenFormations(s,fallen,battle){
     for(const actor of battle.units)if(actor.id===successor.id){actor.type=successor.type;actor.name=formationName(successor)}
   }
 }
-function retainFormationSurvivors(s,id,count,fallen){
+function recordWeaponLoss(s,battle,id,count){
+  if(!count)return
+  s.weaponCounts[id]-=count
+  const lostWeapons=battle.lostWeapons??={}
+  lostWeapons[id]=(lostWeapons[id]||0)+count
+}
+function retainFormationSurvivors(s,battle,id,count,fallen){
   const unit=s.formations.find(unit=>unit.id===id)
   if(!unit)return
   if(unit.children){
     const children=unit.children.map(id=>s.formations.find(unit=>unit.id===id))
     const survivors=splitSurvivors(children.map(unit=>unit.troops),count)
-    children.forEach((child,i)=>retainFormationSurvivors(s,child.id,survivors[i],fallen))
+    children.forEach((child,i)=>retainFormationSurvivors(s,battle,child.id,survivors[i],fallen))
     unit.children=unit.children.filter(id=>s.formations.some(unit=>unit.id===id))
     unit.troops=count;unit.weapons=sumFormationWeapons(s.formations.filter(child=>unit.children.includes(child.id)))
   }else{
     const counts=splitSurvivors([...WEAPONS.map(weapon=>unit.weapons[weapon.id]),unit.troops-Object.values(unit.weapons).reduce((sum,n)=>sum+n,0)],count)
     // 仅在基层扣阵亡士兵携带的武器；合编上级只汇总，避免同一把重复扣除。
-    WEAPONS.forEach((weapon,i)=>{s.weaponCounts[weapon.id]-=unit.weapons[weapon.id]-counts[i]})
+    WEAPONS.forEach((weapon,i)=>recordWeaponLoss(s,battle,weapon.id,unit.weapons[weapon.id]-counts[i]))
     unit.weapons=Object.fromEntries(WEAPONS.map((weapon,i)=>[weapon.id,counts[i]]));unit.troops=count
   }
   if(!count)removeFallenFormation(s,unit,fallen)
@@ -3906,13 +3956,15 @@ function applyBattleLosses(s,battle,includeSurvivors=false){
   const fallen=[]
   // 分遣Actor共用原编制身份，按实际阵亡武器结算，不能将主营的剩余人数当成整营。
   if(typeof battle.collectLosses==='function'){
-    let lost=0
     const casualties=battle.collectLosses(includeSurvivors)
+    const reserveLosses=casualties[BASE_RESERVE_ACTOR_ID]?.unarmed||0
+    let lost=reserveLosses?Math.min(reserveLosses,baseReserveTroops(s)):0
     if(battle.productionLosses){
       applyProductionLosses(s,battle.productionLosses)
       battle.productionLosses=[]
     }
     for(const [id,losses] of Object.entries(casualties)){
+      if(id===BASE_RESERVE_ACTOR_ID)continue
       const root=formationRoots(s).find(unit=>unit.id===Number(id));if(!root)continue
       const leaves=[],visit=unit=>{if(unit.children)unit.children.forEach(id=>visit(s.formations.find(child=>child.id===id)));else leaves.push(unit)}
       visit(root)
@@ -3927,7 +3979,7 @@ function applyBattleLosses(s,battle,includeSurvivors=false){
         const count=Math.min(losses[weapon.id]||0,leaves.reduce((sum,unit)=>sum+unit.weapons[weapon.id],0))
         const shares=splitSurvivors(leaves.map(unit=>unit.weapons[weapon.id]),count)
         leaves.forEach((unit,i)=>{unit.weapons[weapon.id]-=shares[i];removed.set(unit.id,removed.get(unit.id)+shares[i])})
-        s.weaponCounts[weapon.id]-=count;lost+=count
+        recordWeaponLoss(s,battle,weapon.id,count);lost+=count
       }
       for(const unit of leaves){const count=removed.get(unit.id);if(count){unit.troops-=count;unit.battleDamaged=true}}
       const refresh=unit=>{
@@ -3948,7 +4000,7 @@ function applyBattleLosses(s,battle,includeSurvivors=false){
     if(!root)continue
     const survivors=Math.max(0,Math.min(root.troops,Math.ceil(actor.hp))),casualties=root.troops-survivors
     if(!casualties)continue
-    retainFormationSurvivors(s,root.id,survivors,fallen)
+    retainFormationSurvivors(s,battle,root.id,survivors,fallen)
     s.troops=Math.max(0,s.troops-casualties)
     battle.lostTroops=(battle.lostTroops||0)+casualties
     if(!survivors)battle.lostUnits=(battle.lostUnits||0)+1
@@ -3966,8 +4018,6 @@ const GOODS = [
   {id:'bullets',name:'子弹',category:'ammo',desc:'步枪、手枪、轻机枪、狙击枪通用',price:40,amount:30,unit:'发',icon:'ammo'},
   {id:'mortarAmmo',name:'迫击炮弹',category:'ammo',desc:'迫击炮开火时消耗',price:80,amount:5,unit:'发',icon:'shell'},
   {id:'grenades',name:'手雷',category:'ammo',desc:'投掷物资 · 库存储备',price:60,amount:1,unit:'枚',icon:'grenade'},
-  {id:'bandages',name:'绷带',category:'medical',desc:'基础医疗物资 · 库存储备',price:30,amount:1,unit:'卷',icon:'bandage'},
-  {id:'medkits',name:'医疗包',category:'medical',desc:'医疗物资储备',price:90,amount:1,unit:'个',icon:'medical'},
   ...FOODS,
 ]
 const MISSIONS = [
@@ -3989,7 +4039,7 @@ function applyRequestedRiceSupply(s){
   s.rice=Math.min(10000000,(s.rice||0)+1000000)
   s.warehouseRiceSupply20261117=true;return true
 }
-function freshSave(){return {...freshRaids(),...freshGathering(),...freshLogistics(),...freshShop(),...freshBase(),...freshFacilities(),...freshVillages(),...freshRegions(),...freshMarches(),baseVillageId:null,warehouseRiceSupply20261117:true,warehouseFoodAdjustmentVersion:1,name:'新晋指挥官',coins:600,troops:120,medkits:3,shells:2,bullets:0,mortarAmmo:0,grenades:0,bandages:0,stage:1,wins:0,kills:0,bestWave:0,expeditions:0,recruitedTroops:0,recruitmentCount:0,claimed:[],formations:[],formationNumberVersion:FORMATION_NUMBER_VERSION,weaponStockVersion:2,weaponCounts:Object.fromEntries(WEAPONS.map(w=>[w.id,w.id==='rifle'?120:0])),equippedWeapon:'rifle',settings:{effects:true,vibration:true,music:true}}}
+function freshSave(){return {...freshRaids(),...freshGathering(),...freshLogistics(),...freshShop(),...freshBase(),...freshFacilities(),...freshVillages(),...freshRegions(),...freshMarches(),baseVillageId:null,warehouseRiceSupply20261117:true,warehouseFoodAdjustmentVersion:1,name:'新晋指挥官',coins:600,troops:120,shells:2,bullets:0,mortarAmmo:0,grenades:0,stage:1,wins:0,kills:0,bestWave:0,expeditions:0,recruitedTroops:0,recruitmentCount:0,claimed:[],formations:[],formationNumberVersion:FORMATION_NUMBER_VERSION,weaponStockVersion:2,weaponCounts:Object.fromEntries(WEAPONS.map(w=>[w.id,w.id==='rifle'?120:0])),equippedWeapon:'rifle',settings:{effects:true,vibration:true,music:true}}}
 function createNewGameSave(random=Math.random){
   const s=freshSave()
   Object.assign(s,generateStartingRegions(random))
@@ -4115,9 +4165,12 @@ function settle(s,battle){
   if(battle.mode==='campaign'&&win&&!battle.regionId&&!battle.raidId)s.stage=Math.min(12,Math.max(s.stage,battle.level+1))
   if(battle.mode==='defense')s.bestWave=Math.max(s.bestWave,battle.wave)
   const capturedWeapons=Object.fromEntries(WEAPONS.map(weapon=>[weapon.id,0]))
+  const recoveredWeapons={...capturedWeapons}
   let capturedBullets=0
   if(battle.mode==='campaign'&&win){
     for(const weapon of WEAPONS){
+      const recovered=Math.min(battle.lostWeapons?.[weapon.id]||0,10000000-s.weaponCounts[weapon.id])
+      s.weaponCounts[weapon.id]+=recovered;recoveredWeapons[weapon.id]=recovered
       const count=Math.floor(battle.defeatedWeapons?.[weapon.id])
       if(!Number.isFinite(count)||count<=0)continue
       const added=Math.max(0,Math.min(count,10000000-s.weaponCounts[weapon.id]))
@@ -4127,7 +4180,7 @@ function settle(s,battle){
     capturedBullets=Math.max(0,Math.min(capturedBullets,10000000-s.bullets))
     s.bullets+=capturedBullets
   }
-  return {coins,win,kills:battle.kills,wave:battle.wave,lostTroops:battle.lostTroops||0,lostUnits:battle.lostUnits||0,capturedWeapons,capturedBullets}
+  return {coins,win,kills:battle.kills,wave:battle.wave,lostTroops:battle.lostTroops||0,lostUnits:battle.lostUnits||0,capturedWeapons,capturedBullets,recoveredWeapons}
 }
 // 驻防地点节点：村庄用所属地区(或村庄)编号，地区驻防用地区编号；不在驻防则为 null。
 function garrisonSite(s,id){
@@ -4203,6 +4256,11 @@ function syncIdleBranches(s){
   return changed
 }
 // 未派出的兵力与编制留守在根据地中心。
+function baseReserveTroops(s){
+  const assigned=formationLeaves(s).reduce((sum,unit)=>sum+unit.troops,0)
+  const legacyFarmReserve=s.farmTask&&!s.farmTask.unitIds?s.farmTask.workers:0
+  return Math.max(0,s.troops-assigned-farmReserveWorkers(s)+legacyFarmReserve)
+}
 function baseForces(s){
   const fieldWorkers=new Set(farmTasks(s).filter(task=>task.fieldId).flatMap(task=>task.unitIds||[]))
   const activeUnit=u=>{
@@ -4214,8 +4272,7 @@ function baseForces(s){
     return false
   }
   const units=formationRoots(s).filter(u=>!activeUnit(u))
-  const reserveFarmingBase=s.farmTask&&!s.farmTask.unitIds?s.farmTask.workers:0
-  const unassigned=Math.max(0,formation(s).unassignedTroops+reserveFarmingBase)
+  const unassigned=baseReserveTroops(s)
   return {units,unassigned,troops:unassigned+units.reduce((sum,u)=>sum+u.troops,0)}
 }
 const garrisonSplitTypes =(s,unit)=>!unit?[]:FORMATION_TYPES.filter((k,i)=>i<FORMATION_TYPES.findIndex(v=>v.id===unit.type)&&k.min<unit.troops)
@@ -4343,7 +4400,7 @@ function rejoinFormation(s,id){
   return {ok:true,parent,troops:branch.troops,message:`${formationName(branch)}的 ${branch.troops} 人已合回${formationName(parent)}`}
 }
 
-__exp.SAVE_KEY=SAVE_KEY;__exp.FORMATION_TYPES=FORMATION_TYPES;__exp.formationName=formationName;__exp.formationParent=formationParent;__exp.formationPool=formationPool;__exp.formationOccupancy=formationOccupancy;__exp.MODES=MODES;__exp.GOODS=GOODS;__exp.MISSIONS=MISSIONS;__exp.missionProgress=missionProgress;__exp.garrisonSplitTypes=garrisonSplitTypes;__exp.lineageRows=lineageRows;__exp.formationRoots=formationRoots;__exp.previewFormationMerge=previewFormationMerge;__exp.mergeFormations=mergeFormations;__exp.unmergeFormation=unmergeFormation;__exp.formation=formation;__exp.formationResources=formationResources;__exp.autoFormationWeapons=autoFormationWeapons;__exp.formationMinimum=formationMinimum;__exp.reinforcementCapacity=reinforcementCapacity;__exp.reinforcementWeapons=reinforcementWeapons;__exp.reinforcementAdditionalWeapons=reinforcementAdditionalWeapons;__exp.validateReinforcement=validateReinforcement;__exp.reinforceFormation=reinforceFormation;__exp.formationEditActivity=formationEditActivity;__exp.validateFormation=validateFormation;__exp.setFormation=setFormation;__exp.removeFormation=removeFormation;__exp.applyBattleLosses=applyBattleLosses;__exp.applyWarehouseFoodAdjustment=applyWarehouseFoodAdjustment;__exp.applyRequestedRiceSupply=applyRequestedRiceSupply;__exp.freshSave=freshSave;__exp.createNewGameSave=createNewGameSave;__exp.chooseStartingBase=chooseStartingBase;__exp.baseRelocationError=baseRelocationError;__exp.relocateBase=relocateBase;__exp.normalizeSave=normalizeSave;__exp.purchase=purchase;__exp.purchaseWeapon=purchaseWeapon;__exp.equipWeapon=equipWeapon;__exp.claim=claim;__exp.settle=settle;__exp.garrisonSite=garrisonSite;__exp.detachGarrison=detachGarrison;__exp.recallToStandby=recallToStandby;__exp.syncIdleBranches=syncIdleBranches;__exp.baseForces=baseForces;__exp.splitGarrisonUnit=splitGarrisonUnit;__exp.rejoinFormation=rejoinFormation;
+__exp.SAVE_KEY=SAVE_KEY;__exp.BASE_RESERVE_ACTOR_ID=BASE_RESERVE_ACTOR_ID;__exp.FORMATION_TYPES=FORMATION_TYPES;__exp.formationName=formationName;__exp.formationParent=formationParent;__exp.formationPool=formationPool;__exp.formationOccupancy=formationOccupancy;__exp.MODES=MODES;__exp.GOODS=GOODS;__exp.MISSIONS=MISSIONS;__exp.missionProgress=missionProgress;__exp.garrisonSplitTypes=garrisonSplitTypes;__exp.lineageRows=lineageRows;__exp.formationRoots=formationRoots;__exp.previewFormationMerge=previewFormationMerge;__exp.mergeFormations=mergeFormations;__exp.unmergeFormation=unmergeFormation;__exp.formation=formation;__exp.formationResources=formationResources;__exp.autoFormationWeapons=autoFormationWeapons;__exp.formationMinimum=formationMinimum;__exp.reinforcementCapacity=reinforcementCapacity;__exp.reinforcementWeapons=reinforcementWeapons;__exp.reinforcementAdditionalWeapons=reinforcementAdditionalWeapons;__exp.validateReinforcement=validateReinforcement;__exp.reinforceFormation=reinforceFormation;__exp.formationEditActivity=formationEditActivity;__exp.validateFormation=validateFormation;__exp.setFormation=setFormation;__exp.removeFormation=removeFormation;__exp.applyBattleLosses=applyBattleLosses;__exp.applyWarehouseFoodAdjustment=applyWarehouseFoodAdjustment;__exp.applyRequestedRiceSupply=applyRequestedRiceSupply;__exp.freshSave=freshSave;__exp.createNewGameSave=createNewGameSave;__exp.chooseStartingBase=chooseStartingBase;__exp.baseRelocationError=baseRelocationError;__exp.relocateBase=relocateBase;__exp.normalizeSave=normalizeSave;__exp.purchase=purchase;__exp.purchaseWeapon=purchaseWeapon;__exp.equipWeapon=equipWeapon;__exp.claim=claim;__exp.settle=settle;__exp.garrisonSite=garrisonSite;__exp.detachGarrison=detachGarrison;__exp.recallToStandby=recallToStandby;__exp.syncIdleBranches=syncIdleBranches;__exp.baseReserveTroops=baseReserveTroops;__exp.baseForces=baseForces;__exp.splitGarrisonUnit=splitGarrisonUnit;__exp.rejoinFormation=rejoinFormation;
 };
 __mods["js/weapons.js"]=function(__exp,__req,__bind){
 const LEGACY_BULLET_IDS =['rifleAmmo','pistolAmmo','machinegunAmmo','sniperAmmo']
@@ -4684,7 +4741,9 @@ function takeVillageRecruits(s,id,room,random=Math.random){
 __exp.VILLAGE_SIZES=VILLAGE_SIZES;__exp.freshPopulation=freshPopulation;__exp.populationRule=populationRule;__exp.villagePopulation=villagePopulation;__exp.normalizePopulation=normalizePopulation;__exp.advancePopulation=advancePopulation;__exp.takeVillageRecruits=takeVillageRecruits;
 };
 __mods["js/villages.js"]=function(__exp,__req,__bind){
-let ALL_VILLAGES, mapField, mapLocation;__bind('js/world-map.js',m=>{ALL_VILLAGES=m.ALL_VILLAGES;mapField=m.mapField;mapLocation=m.mapLocation;});let clearFarmTask, farmTasks, formationActivity;__bind('js/base.js',m=>{clearFarmTask=m.clearFarmTask;farmTasks=m.farmTasks;formationActivity=m.formationActivity;});let freshPopulation, normalizePopulation;__bind('js/population.js',m=>{freshPopulation=m.freshPopulation;normalizePopulation=m.normalizePopulation;});let detachGarrison, garrisonSite, recallToStandby, syncIdleBranches;__bind('js/state.js',m=>{detachGarrison=m.detachGarrison;garrisonSite=m.garrisonSite;recallToStandby=m.recallToStandby;syncIdleBranches=m.syncIdleBranches;});let recallFacility;__bind('js/facilities.js',m=>{recallFacility=m.recallFacility;});let taskWorkersFrom;__bind('js/workforce.js',m=>{taskWorkersFrom=m.taskWorkersFrom;});const freshVillages =()=>({...freshPopulation(),garrisons:{},facilityVillages:{armory:null}})
+let ALL_VILLAGES, mapField, mapLocation;__bind('js/world-map.js',m=>{ALL_VILLAGES=m.ALL_VILLAGES;mapField=m.mapField;mapLocation=m.mapLocation;});let clearFarmTask, farmTasks, formationActivity;__bind('js/base.js',m=>{clearFarmTask=m.clearFarmTask;farmTasks=m.farmTasks;formationActivity=m.formationActivity;});let freshPopulation, normalizePopulation;__bind('js/population.js',m=>{freshPopulation=m.freshPopulation;normalizePopulation=m.normalizePopulation;});let detachGarrison, garrisonSite, recallToStandby, syncIdleBranches;__bind('js/state.js',m=>{detachGarrison=m.detachGarrison;garrisonSite=m.garrisonSite;recallToStandby=m.recallToStandby;syncIdleBranches=m.syncIdleBranches;});let recallFacility;__bind('js/facilities.js',m=>{recallFacility=m.recallFacility;});let taskWorkersFrom;__bind('js/workforce.js',m=>{taskWorkersFrom=m.taskWorkersFrom;});let MATERIAL_LIMIT, gatheringName;__bind('js/gathering.js',m=>{MATERIAL_LIMIT=m.MATERIAL_LIMIT;gatheringName=m.gatheringName;});const ARMORY_BUILD_COST ={ore:100,wood:100}
+const ARMORY_DISMANTLE_REFUND ={ore:30,wood:30}
+const freshVillages =()=>({...freshPopulation(),garrisons:{},facilityVillages:{armory:null}})
 const isVillage =id=>ALL_VILLAGES.some(v=>v.id===id)
 const villageRegionId =id=>{const site=ALL_VILLAGES.find(v=>v.id===id);return site?.regionId??site?.id}
 const villageEnemyTroops =(s,id)=>(s.mapRegions?.[villageRegionId(id)]?.enemies||[]).reduce((sum,unit)=>sum+unit.troops,0)
@@ -4754,6 +4813,10 @@ function recallGarrison(s,villageId,id){
   syncIdleBranches(s)
   return result
 }
+function missingArmoryMaterials(s){
+  return Object.entries(ARMORY_BUILD_COST).filter(([material,amount])=>s.materials[material]<amount)
+    .map(([material,amount])=>[material,amount-s.materials[material]])
+}
 function placeVillageFacility(s,kind,id){
   if(kind!=='armory'||!isVillage(id))return {ok:false,message:'请选择有效的村庄设置兵工厂'}
   if(villageEnemyTroops(s,id)>0)return {ok:false,message:'请先夺回村庄，再设置兵工厂'}
@@ -4764,6 +4827,9 @@ function placeVillageFacility(s,kind,id){
   // 旧存档中尚无选址的任务，首次选址时一并带入原工作人员和进度。
   const ids=[...new Set(tasks.filter(Boolean).flatMap(t=>t.unitIds))]
   if(ids.some(root=>villageOfFormation(s,root)!==null&&villageOfFormation(s,root)!==id))return {ok:false,message:'原工作人员已在其他村驻防，请先撤回'}
+  const missing=missingArmoryMaterials(s)
+  if(missing.length)return {ok:false,message:'建造材料不足 · 还缺 '+missing.map(([material,amount])=>`${gatheringName(material)} ${amount}`).join('、')}
+  for(const [material,amount] of Object.entries(ARMORY_BUILD_COST))s.materials[material]-=amount
   s.facilityVillages.armory=id
   if(ids.length){s.garrisons[id]=[...new Set([...(s.garrisons[id]||[]),...ids])];for(const task of tasks.filter(Boolean))task.villageId=id}
   return {ok:true}
@@ -4816,7 +4882,12 @@ function removeVillageFacility(s,kind,id){
   if(villageEnemyTroops(s,id)>0)return {ok:false,message:'请先夺回村庄，再拆除兵工厂'}
   clearVillageArmory(s)
   syncIdleBranches(s)
-  return {ok:true}
+  const refunded={}
+  for(const [material,amount] of Object.entries(ARMORY_DISMANTLE_REFUND)){
+    refunded[material]=Math.min(amount,MATERIAL_LIMIT-s.materials[material])
+    s.materials[material]+=refunded[material]
+  }
+  return {ok:true,refunded}
 }
 function evacuateVillage(s,id){
   for(const task of farmTasks(s))if(task.villageId===id||mapField(task.fieldId)?.villageId===id)clearFarmTask(s,task.fieldId)
@@ -4827,7 +4898,7 @@ function evacuateVillage(s,id){
 }
 const villageName =id=>isVillage(id)?mapLocation(id).name:'未选址'
 
-__exp.freshVillages=freshVillages;__exp.isVillage=isVillage;__exp.villageRegionId=villageRegionId;__exp.villageEnemyTroops=villageEnemyTroops;__exp.unitVillage=unitVillage;__exp.villageUnits=villageUnits;__exp.controlledVillages=controlledVillages;__exp.garrisonedVillages=garrisonedVillages;__exp.villageName=villageName;__exp.villageOfFormation=villageOfFormation;__exp.localSplitVillage=localSplitVillage;__exp.villageLocalUnits=villageLocalUnits;__exp.villageControlled=villageControlled;__exp.normalizeVillages=normalizeVillages;__exp.reconcileVillageGarrisons=reconcileVillageGarrisons;__exp.stationTroops=stationTroops;__exp.recallGarrison=recallGarrison;__exp.placeVillageFacility=placeVillageFacility;__exp.armoryTransferError=armoryTransferError;__exp.transferArmory=transferArmory;__exp.removeVillageFacility=removeVillageFacility;__exp.evacuateVillage=evacuateVillage;
+__exp.ARMORY_BUILD_COST=ARMORY_BUILD_COST;__exp.ARMORY_DISMANTLE_REFUND=ARMORY_DISMANTLE_REFUND;__exp.freshVillages=freshVillages;__exp.isVillage=isVillage;__exp.villageRegionId=villageRegionId;__exp.villageEnemyTroops=villageEnemyTroops;__exp.unitVillage=unitVillage;__exp.villageUnits=villageUnits;__exp.controlledVillages=controlledVillages;__exp.garrisonedVillages=garrisonedVillages;__exp.villageName=villageName;__exp.villageOfFormation=villageOfFormation;__exp.localSplitVillage=localSplitVillage;__exp.villageLocalUnits=villageLocalUnits;__exp.villageControlled=villageControlled;__exp.normalizeVillages=normalizeVillages;__exp.reconcileVillageGarrisons=reconcileVillageGarrisons;__exp.stationTroops=stationTroops;__exp.recallGarrison=recallGarrison;__exp.missingArmoryMaterials=missingArmoryMaterials;__exp.placeVillageFacility=placeVillageFacility;__exp.armoryTransferError=armoryTransferError;__exp.transferArmory=transferArmory;__exp.removeVillageFacility=removeVillageFacility;__exp.evacuateVillage=evacuateVillage;
 };
 __mods["js/base.js"]=function(__exp,__req,__bind){
 let hungerStatus, RECRUITMENT, totalPersonnel, mobilizationRecord;__bind('js/logistics.js',m=>{hungerStatus=m.hungerStatus;RECRUITMENT=m.RECRUITMENT;totalPersonnel=m.totalPersonnel;mobilizationRecord=m.mobilizationRecord;});let mapField;__bind('js/world-map.js',m=>{mapField=m.mapField;});let villageOfFormation, unitVillage, villageLocalUnits, villageControlled;__bind('js/villages.js',m=>{villageOfFormation=m.villageOfFormation;unitVillage=m.unitVillage;villageLocalUnits=m.villageLocalUnits;villageControlled=m.villageControlled;});let validateAllocations;__bind('js/workforce.js',m=>{validateAllocations=m.validateAllocations;});let takeVillageRecruits;__bind('js/population.js',m=>{takeVillageRecruits=m.takeVillageRecruits;});let gatheringEntries;__bind('js/gathering.js',m=>{gatheringEntries=m.gatheringEntries;});let baseForces;__bind('js/state.js',m=>{baseForces=m.baseForces;});let attachFarmTravel, farmRouteLength, farmTravelPosition, restoreFarmTravel, FARM_TRAVEL_SPEED;__bind('js/farm-travel.js',m=>{attachFarmTravel=m.attachFarmTravel;farmRouteLength=m.farmRouteLength;farmTravelPosition=m.farmTravelPosition;restoreFarmTravel=m.restoreFarmTravel;FARM_TRAVEL_SPEED=m.FARM_TRAVEL_SPEED;});const FIELD_COOLDOWN =300
@@ -5408,7 +5479,7 @@ const legacyBulletLimits={rifleAmmo:100,pistolAmmo:70,sniperAmmo:20}
 const stockBetween=(amount,cap)=>Number.isFinite(amount)?Math.max(0,Math.min(cap,Math.floor(amount))):cap
 const SHOP_LIMITS ={rifle:50,pistol:30,machinegun:10,sniper:1,mortar:3,
   bullets:Object.values(legacyBulletLimits).reduce((sum,cap)=>sum+cap,0),mortarAmmo:5,grenades:50,
-  bandages:100,medkits:20,millet:100,rice:100,corn:100,pork:30,eggs:30,salt:10,oil:10}
+  millet:100,rice:100,corn:100,pork:30,eggs:30,salt:10,oil:10}
 const freshShop =()=>({shopStock:{...SHOP_LIMITS},shopNextRestockAt:0,shopFoodStockVersion:3})
 const shopSells =id=>Object.prototype.hasOwnProperty.call(SHOP_LIMITS,id)
 function normalizeShop(raw){
@@ -5455,7 +5526,7 @@ const distance=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y)
 const routeLength =route=>route.slice(1).reduce((n,p,i)=>n+distance(route[i],p),0)
 const marchTarget =order=>order.kind==='region'?mapRegion(order.targetId):ALL_VILLAGES.find(v=>v.id===order.targetId)
 const marchRegionId =order=>order.kind==='region'?order.targetId:marchTarget(order)?.regionId??order.targetId
-function marchRoute(target,origin='base'){
+function roadMarch(target,origin='base'){
   if(origin==='base')origin=MAP_BASE.roadId
   const destination=target.regionId||target.id,roads=[...MAP_ROADS,...MAP_REGION_ROADS],cost=new Map([[origin,0]]),previous=new Map(),done=new Set()
   while(true){
@@ -5471,15 +5542,18 @@ function marchRoute(target,origin='base'){
   const steps=[];let id=destination
   while(previous.has(id)){const step=previous.get(id);steps.unshift(step);id=step.from}
   const from=mapLocation(origin)
-  if(id!==origin||!steps.length)return [{x:from.x,y:from.y},{x:target.x,y:target.y}]
-  const route=[]
+  if(id!==origin||!steps.length)return {route:[{x:from.x,y:from.y},{x:target.x,y:target.y}],stops:[]}
+  const route=[],stops=[]
   for(const {road,reverse} of steps){
     const a=mapLocation(road.from),b=mapLocation(road.to),[x1,y1,x2,y2]=road.controls
     const points=Array.from({length:25},(_,i)=>{const t=i/24,u=1-t;return {x:u*u*u*a.x+3*u*u*t*x1+3*u*t*t*x2+t*t*t*b.x,y:u*u*u*a.y+3*u*u*t*y1+3*u*t*t*y2+t*t*t*b.y}})
     if(reverse)points.reverse();route.push(...(route.length?points.slice(1):points))
+    const siteId=reverse?road.from:road.to
+    if(siteId!==destination)stops.push({siteId,pointIndex:route.length-1})
   }
-  return route
+  return {route,stops}
 }
+const marchRoute =(target,origin)=>roadMarch(target,origin).route
 function marchPosition(order){
   let left=order.travelled
   for(let i=1;i<order.route.length;i++){
@@ -5562,10 +5636,10 @@ function advanceMarches(s,seconds){
   return arrived
 }
 
-__exp.MARCH_SPEED=MARCH_SPEED;__exp.freshMarches=freshMarches;__exp.routeLength=routeLength;__exp.marchTarget=marchTarget;__exp.marchRegionId=marchRegionId;__exp.marchRoute=marchRoute;__exp.marchPosition=marchPosition;__exp.marchOrigin=marchOrigin;__exp.startMarch=startMarch;__exp.startGarrisonTransfer=startGarrisonTransfer;__exp.normalizeMarches=normalizeMarches;__exp.advanceMarches=advanceMarches;
+__exp.MARCH_SPEED=MARCH_SPEED;__exp.freshMarches=freshMarches;__exp.routeLength=routeLength;__exp.marchTarget=marchTarget;__exp.marchRegionId=marchRegionId;__exp.marchRoute=marchRoute;__exp.roadMarch=roadMarch;__exp.marchPosition=marchPosition;__exp.marchOrigin=marchOrigin;__exp.startMarch=startMarch;__exp.startGarrisonTransfer=startGarrisonTransfer;__exp.normalizeMarches=normalizeMarches;__exp.advanceMarches=advanceMarches;
 };
 __mods["js/raids.js"]=function(__exp,__req,__bind){
-let ALL_VILLAGES, MAP_REGIONS, OCCUPIABLE_SITES, mapRegion;__bind('js/world-map.js',m=>{ALL_VILLAGES=m.ALL_VILLAGES;MAP_REGIONS=m.MAP_REGIONS;OCCUPIABLE_SITES=m.OCCUPIABLE_SITES;mapRegion=m.mapRegion;});let CampaignBattle, combatGroups, shareCounts;__bind('js/campaign.js',m=>{CampaignBattle=m.CampaignBattle;combatGroups=m.combatGroups;shareCounts=m.shareCounts;});let formationRoots, formationName, FORMATION_TYPES, settle, syncIdleBranches;__bind('js/state.js',m=>{formationRoots=m.formationRoots;formationName=m.formationName;FORMATION_TYPES=m.FORMATION_TYPES;settle=m.settle;syncIdleBranches=m.syncIdleBranches;});let hungerStatus, RECRUITMENT;__bind('js/logistics.js',m=>{hungerStatus=m.hungerStatus;RECRUITMENT=m.RECRUITMENT;});let WEAPONS;__bind('js/weapons.js',m=>{WEAPONS=m.WEAPONS;});let activeFormationIds, assignFormations, formationActivity;__bind('js/base.js',m=>{activeFormationIds=m.activeFormationIds;assignFormations=m.assignFormations;formationActivity=m.formationActivity;});let unitVillage, villageLocalUnits, evacuateVillage;__bind('js/villages.js',m=>{unitVillage=m.unitVillage;villageLocalUnits=m.villageLocalUnits;evacuateVillage=m.evacuateVillage;});let availableWorkforce, taskWorkersFrom;__bind('js/workforce.js',m=>{availableWorkforce=m.availableWorkforce;taskWorkersFrom=m.taskWorkersFrom;});let marchRoute, marchPosition, routeLength;__bind('js/marching.js',m=>{marchRoute=m.marchRoute;marchPosition=m.marchPosition;routeLength=m.routeLength;});let normalizeEnemyUnits, regionEnemyTroops, regionLocalUnits, regionOwner, regionRecord, survivingEnemyUnits;__bind('js/regions.js',m=>{normalizeEnemyUnits=m.normalizeEnemyUnits;regionEnemyTroops=m.regionEnemyTroops;regionLocalUnits=m.regionLocalUnits;regionOwner=m.regionOwner;regionRecord=m.regionRecord;survivingEnemyUnits=m.survivingEnemyUnits;});let reconcileGathering;__bind('js/gathering.js',m=>{reconcileGathering=m.reconcileGathering;});const RAID_INTERVAL =300
+let ALL_VILLAGES, MAP_REGIONS, OCCUPIABLE_SITES, mapRegion;__bind('js/world-map.js',m=>{ALL_VILLAGES=m.ALL_VILLAGES;MAP_REGIONS=m.MAP_REGIONS;OCCUPIABLE_SITES=m.OCCUPIABLE_SITES;mapRegion=m.mapRegion;});let CampaignBattle, combatGroups, shareCounts;__bind('js/campaign.js',m=>{CampaignBattle=m.CampaignBattle;combatGroups=m.combatGroups;shareCounts=m.shareCounts;});let formationRoots, formationName, FORMATION_TYPES, settle, syncIdleBranches, baseReserveTroops, BASE_RESERVE_ACTOR_ID;__bind('js/state.js',m=>{formationRoots=m.formationRoots;formationName=m.formationName;FORMATION_TYPES=m.FORMATION_TYPES;settle=m.settle;syncIdleBranches=m.syncIdleBranches;baseReserveTroops=m.baseReserveTroops;BASE_RESERVE_ACTOR_ID=m.BASE_RESERVE_ACTOR_ID;});let hungerStatus, RECRUITMENT;__bind('js/logistics.js',m=>{hungerStatus=m.hungerStatus;RECRUITMENT=m.RECRUITMENT;});let WEAPONS;__bind('js/weapons.js',m=>{WEAPONS=m.WEAPONS;});let activeFormationIds, assignFormations, formationActivity;__bind('js/base.js',m=>{activeFormationIds=m.activeFormationIds;assignFormations=m.assignFormations;formationActivity=m.formationActivity;});let unitVillage, villageLocalUnits, evacuateVillage;__bind('js/villages.js',m=>{unitVillage=m.unitVillage;villageLocalUnits=m.villageLocalUnits;evacuateVillage=m.evacuateVillage;});let availableWorkforce, taskWorkersFrom;__bind('js/workforce.js',m=>{availableWorkforce=m.availableWorkforce;taskWorkersFrom=m.taskWorkersFrom;});let roadMarch, marchPosition, routeLength, marchOrigin;__bind('js/marching.js',m=>{roadMarch=m.roadMarch;marchPosition=m.marchPosition;routeLength=m.routeLength;marchOrigin=m.marchOrigin;});let normalizeEnemyUnits, regionEnemyTroops, regionLocalUnits, regionOwner, regionRecord, survivingEnemyUnits;__bind('js/regions.js',m=>{normalizeEnemyUnits=m.normalizeEnemyUnits;regionEnemyTroops=m.regionEnemyTroops;regionLocalUnits=m.regionLocalUnits;regionOwner=m.regionOwner;regionRecord=m.regionRecord;survivingEnemyUnits=m.survivingEnemyUnits;});let reconcileGathering;__bind('js/gathering.js',m=>{reconcileGathering=m.reconcileGathering;});const RAID_INTERVAL =300
 const RAID_RESPONSE_WINDOW =20
 const RAID_TRAVEL_SECONDS =12
 const RAID_ALERT_LIMIT =3
@@ -5625,53 +5699,80 @@ function chooseCityExpedition(s,targets,random,engagedRegionId,leaveBehind=0){
   return origin?{target,origin}:null
 }
 const raidApproaching =alert=>!!raidOrigin(alert)&&alert.responseSeconds>RAID_ARRIVAL_SECONDS+1e-8
-function raidMarch(alert){
-  if(!raidApproaching(alert))return null
+function raidMarchPath(alert){
   let path=raidRoutes.get(alert)
   if(!path){
-    const route=marchRoute(raidSite(alert.siteId),alert.originId)
-    path={route,length:routeLength(route)};raidRoutes.set(alert,path)
+    const {route,stops}=roadMarch(raidSite(alert.siteId),alert.originId),length=routeLength(route)
+    const checkpoints=stops.map(({siteId,pointIndex})=>({
+      site:raidSite(mapRegion(siteId)?.villageId??siteId),
+      responseSeconds:RAID_RESPONSE_WINDOW-RAID_TRAVEL_SECONDS*routeLength(route.slice(0,pointIndex+1))/length
+    }))
+    path={route,length,checkpoints};raidRoutes.set(alert,path)
   }
+  return path
+}
+function raidMarch(alert){
+  if(!raidApproaching(alert))return null
+  const path=raidMarchPath(alert)
   const progress=(RAID_RESPONSE_WINDOW-alert.responseSeconds)/RAID_TRAVEL_SECONDS
   return {route:path.route,position:marchPosition({route:path.route,travelled:path.length*progress})}
+}
+function raidInterception(s,alert,untilResponseSeconds=RAID_ARRIVAL_SECONDS,manualSiteId){
+  if(!raidApproaching(alert))return null
+  for(const checkpoint of raidMarchPath(alert).checkpoints){
+    const {site,responseSeconds}=checkpoint
+    if(!site||responseSeconds>=alert.responseSeconds||responseSeconds+1e-8<untilResponseSeconds)continue
+    if(raidDefenders(s,site).length||site.id===manualSiteId&&raidHasPresence(s,site))return site
+  }
+  return null
 }
 const raidOutcomeLabel ={won:'已击退敌袭',lost:'防守失败',undefended:'无可应敌驻军'}
 const raidReportStatus =report=>report.occupied?'失守 · 敌军占领':raidOutcomeLabel[report.outcome]
 const validRaid=raid=>raid&&Number.isSafeInteger(raid.id)&&raid.id>=1&&raidSite(raid.siteId)&&Number.isInteger(raid.force)&&raid.force>=1&&raid.force<=RECRUITMENT.troopLimit
 const reportCount=value=>Number.isSafeInteger(value)&&value>0?value:0
 const reportVisible=(report,now)=>Number.isSafeInteger(report.expiresAt)&&report.expiresAt>now
+const interceptedTarget=alert=>raidSite(alert.interceptedTargetId)
+const isRaidBase=(s,site)=>site.type==='village'&&site.id===s.baseVillageId
+function raidCanOccupy(s,alert,site){
+  const owner=regionOwner(s,site.regionId||site.id)
+  if(isRaidBase(s,site))return owner==='player'
+  return !!(alert.occupation||site.type==='city'||interceptedTarget(alert))&&owner==='neutral'
+}
 function raidReport(alert,outcome,result={}){
   const {id,siteId,force}=alert
   const counts=['kills','lostTroops','coins','capturedBullets']
   const capturedWeapons=Object.fromEntries(WEAPONS.map(weapon=>[weapon.id,reportCount(result.capturedWeapons?.[weapon.id])]))
+  const recoveredWeapons=Object.fromEntries(WEAPONS.map(weapon=>[weapon.id,reportCount(result.recoveredWeapons?.[weapon.id])]))
   const deploymentCounts=Number.isSafeInteger(result.deployedTroops)?{deployedTroops:reportCount(result.deployedTroops),unarmedTroops:reportCount(result.unarmedTroops)}:{}
   const origin=raidOrigin(alert)
-  const occupation=outcome!=='won'&&result.occupied===true?{occupied:true,enemyTroops:reportCount(result.enemyTroops)}:{}
-  return {id,siteId,force,outcome,expiresAt:result.expiresAt,...(origin?{originId:origin.id}:{}),...deploymentCounts,...occupation,...Object.fromEntries(counts.map(key=>[key,reportCount(result[key])])),capturedWeapons}
+  const intercepted=interceptedTarget(alert)
+  const occupation=outcome!=='won'&&result.occupied===true?{occupied:true,enemyTroops:reportCount(result.enemyTroops),...(result.baseLost===true?{baseLost:true}:{})}:{}
+  return {id,siteId,force,outcome,expiresAt:result.expiresAt,...(origin?{originId:origin.id}:{}),...(intercepted?{interceptedTargetId:intercepted.id}:{}),...deploymentCounts,...occupation,...Object.fromEntries(counts.map(key=>[key,reportCount(result[key])])),capturedWeapons,recoveredWeapons}
 }
 const factoryWorkersAt=(s,villageId)=>Object.values(s.armoryTasks).filter(task=>task.villageId===villageId)
 const raidLocalUnits=(s,site)=>{
-  if(!site||site.type==='village'&&site.id===s.baseVillageId)return []
   if(site.type==='village'){
     if(s.mapRegions[site.regionId||site.id]?.enemies.length)return []
+    const base=isRaidBase(s,site)
     const factoryIds=new Set(factoryWorkersAt(s,site.id).flatMap(task=>task.unitIds))
-    if(!s.garrisons[site.id]?.length&&!factoryIds.size)return []
+    if(!base&&!s.garrisons[site.id]?.length&&!factoryIds.size)return []
     const local=villageLocalUnits(s,site.id)
-    for(const unit of local)factoryIds.delete(unit.id)
-    return [...local,...formationRoots(s).filter(unit=>factoryIds.has(unit.id))]
+    const localIds=new Set(local.map(unit=>unit.id))
+    return [...local,...formationRoots(s).filter(unit=>!localIds.has(unit.id)&&(factoryIds.has(unit.id)||base&&marchOrigin(s,unit.id)==='base'))]
   }
   const record=s.mapRegions[site.id]
   return record&&!record.enemies.length?regionLocalUnits(s,site.id):[]
 }
+const raidHasPresence=(s,site)=>raidLocalUnits(s,site).length>0||isRaidBase(s,site)&&baseReserveTroops(s)>0
 function normalizeRaids(s,raw){
   Object.assign(s,freshRaids())
   if(Number.isFinite(raw?.raidElapsed))s.raidElapsed=Math.max(0,Math.min(RAID_INTERVAL,raw.raidElapsed))
   if(Number.isFinite(raw?.enemyOccupationElapsed))s.enemyOccupationElapsed=Math.max(0,Math.min(ENEMY_OCCUPATION_INTERVAL,raw.enemyOccupationElapsed))
   if(Number.isSafeInteger(raw?.raidSerial)&&raw.raidSerial>=0)s.raidSerial=raw.raidSerial
-  const ids=new Set(),locations=new Set()
+  const ids=new Set(),locations=new Set(),directTargets=new Set()
   for(const alert of Array.isArray(raw?.raidAlerts)?raw.raidAlerts:[]){
     if(s.raidAlerts.length>=RAID_ALERT_LIMIT)break
-    if(!validRaid(alert)||ids.has(alert.id)||locations.has(alert.siteId))continue
+    if(!validRaid(alert)||ids.has(alert.id))continue
     ids.add(alert.id)
     s.raidSerial=Math.max(s.raidSerial,alert.id)
     const responseSeconds=Number.isFinite(alert.responseSeconds)?Math.max(0,Math.min(RAID_RESPONSE_WINDOW,alert.responseSeconds)):RAID_RESPONSE_WINDOW
@@ -5680,16 +5781,19 @@ function normalizeRaids(s,raw){
     const sentUnits=normalizeEnemyUnits(alert.sentUnits,origin?.type==='city')
     const dispatched=!!savedOrigin&&savedOrigin===origin&&sentUnits.reduce((sum,unit)=>sum+unit.troops,0)===alert.force
     const occupation=alert.occupation===true&&dispatched
-    const canOccupy=(occupation||target.type==='city'&&dispatched)&&regionOwner(s,target.regionId||target.id)==='neutral'
-    if(alert.force<minimumForce(target)||!raidLocalUnits(s,target).length&&!canOccupy){
+    const originalTarget=dispatched?interceptedTarget(alert):null
+    const minimum=originalTarget?1:minimumForce(target)
+    const canOccupy=dispatched&&raidCanOccupy(s,alert,target)
+    if(!originalTarget&&directTargets.has(target.id)||alert.force<minimum||!raidHasPresence(s,target)&&!canOccupy){
       if(dispatched)returnRaidTroops(s,origin.id,sentUnits)
       continue
     }
     if(!origin)continue
     const force=dispatched?alert.force:Math.min(alert.force,regionEnemyTroops(s,origin.id))
-    if(force<minimumForce(target))continue
+    if(force<minimum)continue
     locations.add(alert.siteId)
-    s.raidAlerts.push({id:alert.id,siteId:alert.siteId,force,responseSeconds,originId:origin.id,sentUnits:dispatched?sentUnits:dispatchRaidTroops(s,origin.id,force),...(occupation?{occupation:true}:{})})
+    if(!originalTarget)directTargets.add(alert.siteId)
+    s.raidAlerts.push({id:alert.id,siteId:alert.siteId,force,responseSeconds:originalTarget?Math.min(RAID_ARRIVAL_SECONDS,responseSeconds):responseSeconds,originId:origin.id,sentUnits:dispatched?sentUnits:dispatchRaidTroops(s,origin.id,force),...(occupation?{occupation:true}:{}),...(originalTarget?{interceptedTargetId:originalTarget.id}:{})})
   }
   const order=raw?.enemyOccupation,origin=raidOrigin(order)
   if(origin&&validRaid(order)&&!ids.has(order.id)&&!locations.has(order.siteId)){
@@ -5713,7 +5817,7 @@ function normalizeRaids(s,raw){
   }
 }
 function advanceRaids(s,seconds,random=Math.random,manualRaidId=null,engagedRegionId=null){
-  const result={alert:null,changed:false,due:[]}
+  const result={alert:null,intercepted:[],changed:false,due:[]}
   if(s.raidReports.length){
     const now=Date.now()
     if(s.raidReports.some(report=>!reportVisible(report,now))){
@@ -5722,12 +5826,23 @@ function advanceRaids(s,seconds,random=Math.random,manualRaidId=null,engagedRegi
   }
   if(!Number.isFinite(seconds)||seconds<=0)return result
   const fighting=manualRaidId?activeFormationIds(s,'battle'):[]
+  const manualSiteId=s.raidAlerts.find(alert=>alert.id===manualRaidId)?.siteId
   for(const alert of [...s.raidAlerts]){
     if(alert.id===manualRaidId)continue
     const site=raidSite(alert.siteId)
-    if(!raidLocalUnits(s,site).length){
-      if((alert.occupation||site.type==='city')&&regionOwner(s,site.regionId||site.id)==='neutral'){
-        alert.responseSeconds=Math.max(0,alert.responseSeconds-seconds)
+    const nextResponse=Math.max(0,alert.responseSeconds-seconds)
+    const checkpoint=raidInterception(s,alert,nextResponse,manualSiteId)
+    if(checkpoint){
+      alert.interceptedTargetId=site.id
+      alert.siteId=checkpoint.id
+      alert.responseSeconds=RAID_ARRIVAL_SECONDS
+      result.intercepted.push(alert);result.changed=true
+      continue
+    }
+    if(site.id===manualSiteId)continue
+    if(!raidHasPresence(s,site)){
+      if(raidCanOccupy(s,alert,site)){
+        alert.responseSeconds=nextResponse
         if(!raidApproaching(alert))result.due.push(alert.id)
         continue
       }
@@ -5735,7 +5850,7 @@ function advanceRaids(s,seconds,random=Math.random,manualRaidId=null,engagedRegi
       returnRaidTroops(s,alert.originId,alert.sentUnits)
       s.raidAlerts=s.raidAlerts.filter(entry=>entry.id!==alert.id);result.changed=true;continue
     }
-    alert.responseSeconds=Math.max(0,alert.responseSeconds-seconds)
+    alert.responseSeconds=nextResponse
     const shared=site.type==='village'&&fighting.some(id=>unitVillage(s,id)===site.id||factoryWorkersAt(s,site.id).some(task=>task.unitIds.includes(id)))
     if(alert.responseSeconds<=1e-8&&!shared)result.due.push(alert.id)
   }
@@ -5744,7 +5859,8 @@ function advanceRaids(s,seconds,random=Math.random,manualRaidId=null,engagedRegi
   const garrisonedSites=raidSites.filter(site=>{
     const record=s.mapRegions[site.regionId||site.id]
     if(record?.enemies.length)return false
-    return site.type==='village'?site.id!==s.baseVillageId&&(s.garrisons[site.id]?.length||factoryWorkersAt(s,site.id).length):record?.garrisonIds.length||splitLocations.has(site.id)
+    if(isRaidBase(s,site))return raidDefenders(s,site).length>0
+    return site.type==='village'?s.garrisons[site.id]?.length||factoryWorkersAt(s,site.id).length:record?.garrisonIds.length||splitLocations.has(site.id)
   })
   if(!garrisonedSites.length){s.raidElapsed=0;return result}
   const interval=Math.max(MIN_RAID_INTERVAL,Math.round(RAID_INTERVAL/(1+(garrisonedSites.length-1)*.25)))
@@ -5827,10 +5943,11 @@ function raidDeployment(s,id){
 function raidDefenders(s,site){
   const units=[]
   const allowed=defenseDuties(site)
+  const base=isRaidBase(s,site)&&regionOwner(s,site.regionId||site.id)==='player'
   for(const unit of raidLocalUnits(s,site)){
     const activity=formationActivity(s,unit.id,true)
     if(activity&&!allowed.includes(activity))continue
-    const local=site.type!=='village'||unitVillage(s,unit.id)===site.id
+    const local=site.type!=='village'||unitVillage(s,unit.id)===site.id||base&&marchOrigin(s,unit.id)==='base'
     const standing=local?availableWorkforce(s,unit.id):0
     const inventory=combatGroups(unit.weapons,unit.troops)
     const groups=[]
@@ -5853,10 +5970,13 @@ function raidDefenders(s,site){
     if(!troops)continue
     units.push({id:unit.id,type:unit.type,name:formationName(unit),troops,groups})
   }
+  const reserve=base?baseReserveTroops(s):0
+  if(reserve>0)units.push({id:BASE_RESERVE_ACTOR_ID,type:'squad',name:'未编留守人员',troops:reserve,groups:[{weapon:null,troops:reserve}]})
   return units
 }
 function assignRaidDefenders(s,deployment){
-  return assignFormations(s,deployment.units.map(unit=>unit.id),'battle',true,defenseDuties(deployment.site))
+  const ids=deployment.units.filter(unit=>unit.id!==BASE_RESERVE_ACTOR_ID).map(unit=>unit.id)
+  return ids.length?assignFormations(s,ids,'battle',true,defenseDuties(deployment.site)):deployment.ok
 }
 function raidEnemyUnits(alert){
   if(raidSite(alert.siteId).type==='city'){
@@ -5912,8 +6032,10 @@ function captureRaidSite(s,site,enemies,keepMarching=false){
   const id=site.regionId||site.id,record=regionRecord(s,id)
   if(!enemies.length||!record)return {occupied:false}
   const enemyTroops=enemies.reduce((total,unit)=>total+unit.troops,0)
+  const baseLost=isRaidBase(s,site)
   record.enemies=enemies
   record.garrisonIds=[]
+  if(baseLost)s.baseVillageId=null
   if(site.type==='village')evacuateVillage(s,site.id)
   else{
     delete s.gatheringTasks[id]
@@ -5921,11 +6043,17 @@ function captureRaidSite(s,site,enemies,keepMarching=false){
   }
   if(!keepMarching)s.marchingOrders=s.marchingOrders.filter(order=>order.kind==='village'?order.targetId!==site.id:order.targetId!==id)
   syncIdleBranches(s)
-  return {occupied:true,enemyTroops}
+  return {occupied:true,enemyTroops,...(baseLost?{baseLost:true}:{})}
 }
 function autoDefendRaid(s,id){
   const deployment=raidDeployment(s,id)
   if(!deployment.alert||!deployment.site)return null
+  const {alert,site}=deployment
+  if(regionOwner(s,site.regionId||site.id)==='enemy'){
+    s.raidAlerts=s.raidAlerts.filter(entry=>entry.id!==id)
+    returnRaidTroops(s,alert.originId,alert.sentUnits)
+    return null
+  }
   const deploymentCounts={deployedTroops:deployment.troops,unarmedTroops:deployment.unarmedTroops}
   let report
   if(deployment.ok){
@@ -5938,7 +6066,6 @@ function autoDefendRaid(s,id){
     report=raidReport(deployment.alert,battle.won?'won':'lost',{...result,...deploymentCounts,...occupation})
   }else{
     s.raidAlerts=s.raidAlerts.filter(alert=>alert.id!==id)
-    const {alert,site}=deployment
     const enemies=alert.occupation?occupationUnits(alert):raidEnemyUnits(alert)
     const occupation=captureRaidSite(s,site,enemies,alert.occupation===true||site.type==='city')
     report=raidReport(deployment.alert,'undefended',{...deploymentCounts,...occupation})
@@ -5959,7 +6086,7 @@ function finishRaid(s,battle){
   const fought=unit=>battle.units.some(actor=>actor.rootId===unit.id&&actor.hp>0)
   if(site.type==='village'){
     const survivors=(s.garrisons[site.id]||[]).filter(id=>alive.has(id))
-    if(battle.won&&!survivors.length){
+    if(battle.won&&!survivors.length&&!isRaidBase(s,site)){
       const survivor=villageLocalUnits(s,site.id).find(fought)
       if(survivor){survivors.push(survivor.id);delete survivor.splitOrigin}
     }
@@ -5978,7 +6105,7 @@ function finishRaid(s,battle){
   return {occupied:false}
 }
 
-__exp.RAID_INTERVAL=RAID_INTERVAL;__exp.RAID_RESPONSE_WINDOW=RAID_RESPONSE_WINDOW;__exp.RAID_TRAVEL_SECONDS=RAID_TRAVEL_SECONDS;__exp.RAID_ALERT_LIMIT=RAID_ALERT_LIMIT;__exp.ENEMY_OCCUPATION_INTERVAL=ENEMY_OCCUPATION_INTERVAL;__exp.freshRaids=freshRaids;__exp.raidSite=raidSite;__exp.raidOrigin=raidOrigin;__exp.raidApproaching=raidApproaching;__exp.raidOutcomeLabel=raidOutcomeLabel;__exp.raidReportStatus=raidReportStatus;__exp.raidRepelled=raidRepelled;__exp.raidMarch=raidMarch;__exp.normalizeRaids=normalizeRaids;__exp.advanceRaids=advanceRaids;__exp.advanceEnemyOccupation=advanceEnemyOccupation;__exp.raidDeployment=raidDeployment;__exp.assignRaidDefenders=assignRaidDefenders;__exp.makeRaidBattle=makeRaidBattle;__exp.resolveRaidAutomatically=resolveRaidAutomatically;__exp.settleRaid=settleRaid;__exp.autoDefendRaid=autoDefendRaid;__exp.finishRaid=finishRaid;
+__exp.RAID_INTERVAL=RAID_INTERVAL;__exp.RAID_RESPONSE_WINDOW=RAID_RESPONSE_WINDOW;__exp.RAID_TRAVEL_SECONDS=RAID_TRAVEL_SECONDS;__exp.RAID_ALERT_LIMIT=RAID_ALERT_LIMIT;__exp.ENEMY_OCCUPATION_INTERVAL=ENEMY_OCCUPATION_INTERVAL;__exp.freshRaids=freshRaids;__exp.raidSite=raidSite;__exp.raidOrigin=raidOrigin;__exp.raidApproaching=raidApproaching;__exp.raidOutcomeLabel=raidOutcomeLabel;__exp.raidReportStatus=raidReportStatus;__exp.raidRepelled=raidRepelled;__exp.raidMarch=raidMarch;__exp.raidInterception=raidInterception;__exp.normalizeRaids=normalizeRaids;__exp.advanceRaids=advanceRaids;__exp.advanceEnemyOccupation=advanceEnemyOccupation;__exp.raidDeployment=raidDeployment;__exp.raidDefenders=raidDefenders;__exp.assignRaidDefenders=assignRaidDefenders;__exp.makeRaidBattle=makeRaidBattle;__exp.resolveRaidAutomatically=resolveRaidAutomatically;__exp.settleRaid=settleRaid;__exp.autoDefendRaid=autoDefendRaid;__exp.finishRaid=finishRaid;
 };
 __mods["js/campaign.js"]=function(__exp,__req,__bind){
 let Battle;__bind('js/battle.js',m=>{Battle=m.Battle;});let formationRoots, formationName, FORMATION_TYPES;__bind('js/state.js',m=>{formationRoots=m.formationRoots;formationName=m.formationName;FORMATION_TYPES=m.FORMATION_TYPES;});let WEAPONS, weaponById;__bind('js/weapons.js',m=>{WEAPONS=m.WEAPONS;weaponById=m.weaponById;});let formationActivity, activityLabel;__bind('js/base.js',m=>{formationActivity=m.formationActivity;activityLabel=m.activityLabel;});const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
@@ -6320,9 +6447,6 @@ class CampaignBattle extends Battle {
       }
     }
   }
-  heal() {
-    return false
-  }
   strike(){return false}
 }
 
@@ -6387,8 +6511,6 @@ class Battle {
       }
     }
   }
-  // 保留旧调用接口，战场医疗和炮火功能已撤除。
-  heal(){return false}
   strike(){return false}
 }
 

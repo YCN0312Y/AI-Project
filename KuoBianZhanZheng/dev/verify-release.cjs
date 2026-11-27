@@ -25,7 +25,7 @@ async function main() {
     await page.route('http://release.test/**', async route => {
       const url = new URL(route.request().url())
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html })
-      let file = url.pathname === '/dev/wx-shim.js' ? path.join(root, 'dev/wx-shim.js') : path.join(release, url.pathname)
+      let file = url.pathname === '/dev/wx-shim.js' ? path.join(root, 'Source/dev/wx-shim.js') : path.join(release, url.pathname)
       if (!path.extname(file)) file += '.js'
       if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: 'missing' })
       const type = { '.js': 'text/javascript', '.png': 'image/png', '.wav': 'audio/wav' }[path.extname(file)] || 'application/octet-stream'

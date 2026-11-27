@@ -6,7 +6,115 @@ import {
   fillEllipse,
   fillRoundRect,
   strokeRoundRect,
+  setFont,
 } from './utils'
+
+// 武器徽章文字固定，宽度只需测量一次
+const weaponBadgeWidths = {}
+
+// 士兵身体、枪械和影子按「半径 + 配色」预渲染，复杂时只贴图并旋转枪械。
+// 瞄准角度仍然逐帧更新，不改变操作和画面表现。
+const fighterSpriteCache = new Map()
+
+export function clearFighterSprites() {
+  fighterSpriteCache.clear()
+}
+
+function makeSprite(w, h, dpr) {
+  const canvas = wx.createCanvas()
+  canvas.width = Math.max(1, Math.ceil(w * dpr))
+  canvas.height = Math.max(1, Math.ceil(h * dpr))
+  const ctx = canvas.getContext('2d')
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  return { canvas, ctx, w, h }
+}
+
+function cacheSprite(key, sprite) {
+  if (fighterSpriteCache.size > 240) fighterSpriteCache.clear()
+  fighterSpriteCache.set(key, sprite)
+  return sprite
+}
+
+function drawBody(ctx, cx, cy, r, colors) {
+  ctx.beginPath()
+  ctx.arc(cx, cy, r, 0, TAU)
+  ctx.fillStyle = colors.body
+  ctx.fill()
+  ctx.lineWidth = Math.max(1, r * 0.15)
+  ctx.strokeStyle = 'rgba(6, 12, 20, 0.6)'
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(cx, cy - r * 0.18, r * 0.76, Math.PI * 1.04, Math.PI * 1.96)
+  ctx.strokeStyle = colors.helmet
+  ctx.lineWidth = Math.max(1.8, r * 0.28)
+  ctx.lineCap = 'round'
+  ctx.stroke()
+
+  const er = Math.max(0.9, r * 0.12)
+  ctx.fillStyle = 'rgba(10, 18, 28, 0.9)'
+  ctx.beginPath()
+  ctx.arc(cx - r * 0.3, cy + r * 0.08, er, 0, TAU)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(cx + r * 0.3, cy + r * 0.08, er, 0, TAU)
+  ctx.fill()
+}
+
+function getBodySprite(r, colors, dpr) {
+  const key = `b|${dpr}|${r.toFixed(2)}|${colors.body}|${colors.helmet}`
+  const cached = fighterSpriteCache.get(key)
+  if (cached) return cached
+
+  const pad = 3
+  const size = r * 2 + pad * 2
+  const sprite = makeSprite(size, size, dpr)
+  drawBody(sprite.ctx, r + pad, r + pad, r, colors)
+  sprite.ox = r + pad
+  sprite.oy = r + pad
+  return cacheSprite(key, sprite)
+}
+
+function drawGun(ctx, r) {
+  fillRoundRect(ctx, -r * 0.4, -r * 0.12, r * 0.55, r * 0.32, r * 0.1, '#5a412b')
+  fillRoundRect(ctx, r * 0.05, -r * 0.1, r * 0.98, r * 0.28, r * 0.07, '#4b5864')
+  fillRoundRect(ctx, r * 0.98, -r * 0.055, r * 0.95, r * 0.15, r * 0.05, '#28313a')
+  fillRoundRect(ctx, r * 0.45, r * 0.15, r * 0.3, r * 0.4, r * 0.05, '#333c45')
+  ctx.fillStyle = 'rgba(215, 232, 245, 0.72)'
+  ctx.fillRect(r * 0.14, -r * 0.105, r * 0.86, Math.max(0.7, r * 0.035))
+  fillCircle(ctx, r * 1.95, r * 0.015, Math.max(0.8, r * 0.06), '#d7e2ea')
+  fillCircle(ctx, r * 0.18, r * 0.03, Math.max(1, r * 0.13), '#2a2e33')
+}
+
+function getGunSprite(r, dpr) {
+  const key = `g|${dpr}|${r.toFixed(2)}`
+  const cached = fighterSpriteCache.get(key)
+  if (cached) return cached
+
+  const pad = Math.max(2, r * 0.12)
+  const left = -r * 0.4 - pad
+  const top = -r * 0.12 - pad
+  const w = r * 2.43 + pad * 2
+  const h = r * 0.67 + pad * 2
+  const sprite = makeSprite(w, h, dpr)
+  sprite.ctx.translate(-left, -top)
+  drawGun(sprite.ctx, r)
+  sprite.left = left
+  sprite.top = top
+  return cacheSprite(key, sprite)
+}
+
+function getShadowSprite(r, dpr) {
+  const key = `s|${dpr}|${r.toFixed(2)}`
+  const cached = fighterSpriteCache.get(key)
+  if (cached) return cached
+
+  const rx = r * 0.95
+  const ry = r * 0.36
+  const sprite = makeSprite(rx * 2 + 2, ry * 2 + 2, dpr)
+  fillEllipse(sprite.ctx, sprite.w / 2, sprite.h / 2, rx, ry, 'rgba(0,0,0,0.34)')
+  return cacheSprite(key, sprite)
+}
 
 // 静态背景只绘制一次，之后每帧直接贴图，省性能
 export function createBackground(w, h, dpr) {
@@ -124,56 +232,56 @@ export function createBackground(w, h, dpr) {
   return canvas
 }
 
+// 掩体（墙、房屋、沙袋、石块）在整局内不会变化，预渲染成一层静态贴图。
+// 每帧只贴一次图，避免重复裁剪、描边和大量砖缝路径。
+export function createCoverLayer(covers, x, y, w, h, dpr) {
+  const canvas = wx.createCanvas()
+  canvas.width = Math.max(1, Math.round(w * dpr))
+  canvas.height = Math.max(1, Math.round(h * dpr))
+  const ctx = canvas.getContext('2d')
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.translate(-x, -y)
+  for (let i = 0; i < covers.length; i++) {
+    drawCover(ctx, covers[i])
+  }
+  return canvas
+}
+
 // 小兵：圆身体 + 头盔弧 + 步枪（枪口朝向当前攻击目标）
 export function drawFighter(ctx, x, y, r, colors, time, phase, flash, moving, aimAngle) {
   const bob = Math.sin(time * 7 + phase) * (moving ? 1.8 : 0.8)
   const by = y + bob
   const aim = typeof aimAngle === 'number' ? aimAngle : -0.25
+  const dpr = ctx.__kbDpr || 1
 
-  fillEllipse(ctx, x, y + r * 0.82, r * 0.95, r * 0.36, 'rgba(0,0,0,0.34)')
+  const shadow = getShadowSprite(r, dpr)
+  ctx.drawImage(
+    shadow.canvas,
+    x - shadow.w / 2,
+    y + r * 0.82 - shadow.h / 2,
+    shadow.w,
+    shadow.h
+  )
 
-  // 身体
-  ctx.beginPath()
-  ctx.arc(x, by, r, 0, TAU)
-  ctx.fillStyle = colors.body
-  ctx.fill()
-  ctx.lineWidth = Math.max(1, r * 0.15)
-  ctx.strokeStyle = 'rgba(6, 12, 20, 0.6)'
-  ctx.stroke()
-
-  // 头盔
-  ctx.beginPath()
-  ctx.arc(x, by - r * 0.18, r * 0.76, Math.PI * 1.04, Math.PI * 1.96)
-  ctx.strokeStyle = colors.helmet
-  ctx.lineWidth = Math.max(1.8, r * 0.28)
-  ctx.lineCap = 'round'
-  ctx.stroke()
-
-  // 眼睛
-  const er = Math.max(0.9, r * 0.12)
-  ctx.fillStyle = 'rgba(10, 18, 28, 0.9)'
-  ctx.beginPath()
-  ctx.arc(x - r * 0.3, by + r * 0.08, er, 0, TAU)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(x + r * 0.3, by + r * 0.08, er, 0, TAU)
-  ctx.fill()
+  const body = getBodySprite(r, colors, dpr)
+  ctx.drawImage(
+    body.canvas,
+    x - body.ox,
+    by - body.oy,
+    body.w,
+    body.h
+  )
 
   // 步枪：以身体边缘为握持点，沿攻击方向旋转
-  ctx.save()
   const handX = x + Math.cos(aim) * r * 0.55
   const handY = by + Math.sin(aim) * r * 0.55
+  const gun = getGunSprite(r, dpr)
+  ctx.save()
   ctx.translate(handX, handY)
   ctx.rotate(aim)
-  fillRoundRect(ctx, -r * 0.4, -r * 0.12, r * 0.55, r * 0.32, r * 0.1, '#5a412b')
-  fillRoundRect(ctx, r * 0.05, -r * 0.1, r * 0.98, r * 0.28, r * 0.07, '#4b5864')
-  fillRoundRect(ctx, r * 0.98, -r * 0.055, r * 0.95, r * 0.15, r * 0.05, '#28313a')
-  fillRoundRect(ctx, r * 0.45, r * 0.15, r * 0.3, r * 0.4, r * 0.05, '#333c45')
-  ctx.fillStyle = 'rgba(215, 232, 245, 0.72)'
-  ctx.fillRect(r * 0.14, -r * 0.105, r * 0.86, Math.max(0.7, r * 0.035))
-  fillCircle(ctx, r * 1.95, r * 0.015, Math.max(0.8, r * 0.06), '#d7e2ea')
-  fillCircle(ctx, r * 0.18, r * 0.03, Math.max(1, r * 0.13), '#2a2e33')
+  ctx.drawImage(gun.canvas, gun.left, gun.top, gun.w, gun.h)
   ctx.restore()
+  ctx.lineCap = 'round'
 
   if (flash > 0) {
     ctx.globalAlpha = Math.min(0.8, flash)
@@ -253,8 +361,12 @@ export function drawUnitBadge(ctx, u) {
   if (u.dead) return
   const weaponName = u.isEnemy && { mg: '机枪', grenade: '手雷', mortar: '迫击炮' }[u.weapon]
   if (weaponName) {
-    ctx.font = 'bold 10px sans-serif'
-    const width = ctx.measureText(weaponName).width + 12
+    setFont(ctx, 10, 'bold')
+    let width = weaponBadgeWidths[weaponName]
+    if (width === undefined) {
+      width = ctx.measureText(weaponName).width + 12
+      weaponBadgeWidths[weaponName] = width
+    }
     const y = u.y + u.r + 6
     fillRoundRect(ctx, u.x - width / 2, y, width, 16, 5, 'rgba(80, 16, 12, 0.94)')
     ctx.fillStyle = '#ffc0a4'
@@ -267,8 +379,14 @@ export function drawUnitBadge(ctx, u) {
   if (u.hideBadge) return
 
   const label = `${u.tierName} ${formatCompact(u.troops)}`
-  ctx.font = 'bold 9px sans-serif'
-  const tw = ctx.measureText(label).width
+  setFont(ctx, 9, 'bold')
+  // 兵力数字变化并不频繁，缓存标签和测量结果，避免每帧 measureText。
+  let tw = u._badgeWidth
+  if (u._badgeLabel !== label) {
+    tw = ctx.measureText(label).width
+    u._badgeLabel = label
+    u._badgeWidth = tw
+  }
   const pw = tw + 13
   const ph = 14
   const px = u.x - pw / 2

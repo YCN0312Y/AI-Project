@@ -5,6 +5,6 @@ if errorlevel 1 (
     "C:\Users\Administrator\.local\bin\python3.11.exe" -m pip install pygame numpy --break-system-packages
     if errorlevel 1 goto :end
 )
-"C:\Users\Administrator\.local\bin\python3.11.exe" "%~dp0main.py"
+"C:\Users\Administrator\.local\bin\python3.11.exe" "%~dp0Source\main.py"
 :end
 pause

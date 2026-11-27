@@ -118,7 +118,7 @@ function explosion() {
   return normalize(b, 0.94)
 }
 
-const outDir = path.join(__dirname, '..', 'assets', 'audio')
+const outDir = path.join(__dirname, '..', 'Source', 'assets', 'audio')
 fs.mkdirSync(outDir, { recursive: true })
 writeWav(path.join(outDir, 'sfx-shot.wav'), shot())
 writeWav(path.join(outDir, 'sfx-enemy-shot.wav'), enemyShot())

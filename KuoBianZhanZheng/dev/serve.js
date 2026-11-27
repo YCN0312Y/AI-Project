@@ -5,6 +5,7 @@ const fs = require('fs')
 const path = require('path')
 
 const ROOT = path.resolve(__dirname, '..')
+const SOURCE = path.join(ROOT, 'Source')
 const PORT = process.argv[2]
   ? Number(process.argv[2])
   : process.env.PORT
@@ -73,8 +74,9 @@ http
 
     if (urlPath === '/') urlPath = '/dev/index.html'
 
-    const filePath = path.normalize(path.join(ROOT, urlPath))
-    if (!filePath.startsWith(ROOT)) {
+    const root = urlPath.startsWith('/site/') ? ROOT : SOURCE
+    const filePath = path.normalize(path.join(root, urlPath))
+    if (!filePath.startsWith(root + path.sep)) {
       res.writeHead(403)
       res.end('Forbidden')
       return

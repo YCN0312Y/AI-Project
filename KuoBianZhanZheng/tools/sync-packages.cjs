@@ -1,4 +1,4 @@
-// 把根目录源码同步到 Package 下的两个包：
+// 把 Source 中的源码同步到 Package 下的两个包：
 //   KuoBianZhanZheng-Development  开发用完整包（含测试入口、调试对象）
 //   KuoBianZhanZheng-WeChat-Game  上传包（去除测试入口；沿用各自 project.config.json）
 // node tools/sync-packages.cjs
@@ -7,6 +7,7 @@ const path = require('node:path')
 const { releaseGameSource, readmeText } = require(path.join(__dirname, 'release-transforms.cjs'))
 
 const root = path.resolve(__dirname, '..')
+const source = path.join(root, 'Source')
 const pkgs = path.join(root, 'Package')
 const devDir = path.join(pkgs, 'KuoBianZhanZheng-Development')
 const relDir = path.join(pkgs, 'KuoBianZhanZheng-WeChat-Game')
@@ -25,11 +26,10 @@ function syncPackage(dir, { release }) {
     }
   }
   for (const item of ['js', 'assets']) {
-    fs.cpSync(path.join(root, item), path.join(dir, item), { recursive: true })
+    fs.cpSync(path.join(source, item), path.join(dir, item), { recursive: true })
   }
-  for (const f of ['README.md', 'game.json']) {
-    fs.copyFileSync(path.join(root, f), path.join(dir, f))
-  }
+  fs.copyFileSync(path.join(root, 'README.md'), path.join(dir, 'README.md'))
+  fs.copyFileSync(path.join(source, 'game.json'), path.join(dir, 'game.json'))
   // 入口：开发包保留调试全局对象；上传包只留 new Game()
   fs.writeFileSync(
     path.join(dir, 'game.js'),
@@ -40,7 +40,7 @@ function syncPackage(dir, { release }) {
         'if (typeof globalThis !== \'undefined\') {\n  globalThis.__commanderSim = game\n}\n'
   )
   if (release) {
-    fs.writeFileSync(path.join(dir, 'js/game.js'), releaseGameSource(path.join(root, 'js/game.js')))
+    fs.writeFileSync(path.join(dir, 'js/game.js'), releaseGameSource(path.join(source, 'js/game.js')))
     fs.writeFileSync(path.join(dir, 'README.md'), readmeText())
   }
   console.log('synced', path.relative(root, dir), release ? '(release)' : '(dev)')

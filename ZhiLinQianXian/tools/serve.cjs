@@ -1,7 +1,8 @@
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
-const root=path.resolve(__dirname,'..');const port=Number(process.argv[2]||8136);
+const projectRoot=path.resolve(__dirname,'..'),sourceRoot=path.join(projectRoot,'Source');const port=Number(process.argv[2]||8136);
 http.createServer((req,res)=>{
   let route;try{route=decodeURIComponent(new URL(req.url,'http://local').pathname)}catch{res.writeHead(400);return res.end()}
+  const root=route.startsWith('/GameAsset/')||route==='/指挥前线-手机版.html'?projectRoot:sourceRoot;
   const file=path.resolve(root,'.'+(route==='/'?'/index.html':route));
   if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end()}
   fs.readFile(file,(error,data)=>{if(error){

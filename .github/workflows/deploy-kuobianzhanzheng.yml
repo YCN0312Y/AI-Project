@@ -30,8 +30,8 @@ jobs:
       - name: Include Cat web app
         run: |
           mkdir -p KuoBianZhanZheng/site/Cat
-          cp Cat/index.html KuoBianZhanZheng/site/Cat/
-          cp -r Cat/css Cat/js Cat/assets KuoBianZhanZheng/site/Cat/
+          cp Cat/Source/index.html KuoBianZhanZheng/site/Cat/
+          cp -r Cat/Source/css Cat/Source/js Cat/Source/assets KuoBianZhanZheng/site/Cat/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

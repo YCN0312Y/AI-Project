@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8148);
-const ROOT = __dirname;
+const ROOT = path.join(__dirname, 'Source');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -19,7 +19,7 @@ const server = http.createServer((req, res) => {
   const relPath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const fullPath = path.resolve(ROOT, relPath);
 
-  if (!fullPath.startsWith(ROOT)) {
+  if (!fullPath.startsWith(ROOT + path.sep)) {
     res.writeHead(403);
     res.end('Forbidden');
     return;

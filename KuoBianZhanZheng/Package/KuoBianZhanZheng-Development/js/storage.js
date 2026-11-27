@@ -3,6 +3,7 @@ import { LEVELS, TROOP_TIERS } from './config'
 const KEY = 'commanderSim.save.v1'
 const CAMPAIGN_KEY = 'commanderSim.campaign.v1'
 const CHECKPOINT_KEY = 'commanderSim.checkpoint.v1'
+const CLEARANCE_KEY = 'commanderSim.clearance.v1'
 
 const DEFAULT_SAVE = {
   bestScore: 0,
@@ -12,6 +13,7 @@ const DEFAULT_SAVE = {
   plays: 0,
   musicOn: true,
   sfxOn: true,
+  perfMode: false,
 }
 
 export function loadSave() {
@@ -26,6 +28,8 @@ export function loadSave() {
       plays: Math.max(0, Number(raw.plays) || 0),
       musicOn: raw.musicOn !== false,
       sfxOn: raw.sfxOn !== false,
+      // 流畅模式：低端机降低渲染分辨率的用户选择
+      perfMode: raw.perfMode === true,
     }
   } catch (e) {
     return Object.assign({}, DEFAULT_SAVE)
@@ -42,6 +46,7 @@ export function writeSave(data) {
       plays: data.plays,
       musicOn: data.musicOn !== false,
       sfxOn: data.sfxOn !== false,
+      perfMode: data.perfMode === true,
     })
   } catch (e) {
     // 存储失败不影响游戏进行
@@ -162,6 +167,32 @@ export function writeCheckpoint(data) {
 export function clearCheckpoint() {
   try {
     wx.removeStorageSync(CHECKPOINT_KEY)
+  } catch (e) {
+    // 忽略
+  }
+}
+
+// 通关快照：通过全部关卡时记录当时的兵力与金币，供新一轮从第 1 关继承
+export function loadClearance() {
+  try {
+    return parseArmyState(wx.getStorageSync(CLEARANCE_KEY))
+  } catch (e) {
+    return null
+  }
+}
+
+export function writeClearance(data) {
+  try {
+    wx.setStorageSync(CLEARANCE_KEY, {
+      level: data.level,
+      army: data.army,
+      merit: data.merit || 0,
+      meritProgress: data.meritProgress || 0,
+      coins: data.coins,
+      score: data.score || 0,
+      kills: data.kills || 0,
+      peakTroops: data.peakTroops || 0,
+    })
   } catch (e) {
     // 忽略
   }

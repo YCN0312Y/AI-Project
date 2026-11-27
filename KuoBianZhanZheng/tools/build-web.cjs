@@ -5,10 +5,11 @@ const path = require('path')
 const { releaseGameSource } = require('./release-transforms.cjs')
 
 const ROOT = path.resolve(__dirname, '..')
+const SOURCE = path.join(ROOT, 'Source')
 const SITE = path.join(ROOT, 'site')
-const WEB = path.join(ROOT, 'web')
-const JS_DIR = path.join(ROOT, 'js')
-const ASSETS_DIR = path.join(ROOT, 'assets')
+const WEB = path.join(SOURCE, 'web')
+const JS_DIR = path.join(SOURCE, 'js')
+const ASSETS_DIR = path.join(SOURCE, 'assets')
 
 const FORBIDDEN_MARKERS = [
   '__commanderSim',

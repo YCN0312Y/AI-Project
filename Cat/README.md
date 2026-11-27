@@ -21,5 +21,7 @@
 
 ## 运行方式
 
-1. 双击 `index.html` 即可离线直接打开运行（内置 Base64 贴图包，无跨域限制）；
-2. 或双击 `启动猫猫模拟器.cmd` / 执行 `node serve.cjs 8148` 访问 `http://127.0.0.1:8148/`。
+1. 双击 `Source/index.html` 可离线打开，页面内置 Base64 贴图包。
+2. 在项目根目录双击 `启动猫猫模拟器.cmd`，也可以执行 `node serve.cjs 8148` 后打开 `http://127.0.0.1:8148/`。
+
+网页源码、样式和运行资源分别位于 `Source/js/`、`Source/css/` 和 `Source/assets/`。

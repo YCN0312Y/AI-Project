@@ -346,7 +346,7 @@ function makeBattle() {
   return normalize(b, 0.8)
 }
 
-const outDir = path.join(__dirname, '..', 'assets', 'audio')
+const outDir = path.join(__dirname, '..', 'Source', 'assets', 'audio')
 fs.mkdirSync(outDir, { recursive: true })
 const menu = makeMenu()
 const battle = makeBattle()

@@ -71,7 +71,8 @@
 - 在线网站：<https://ycn0312y.github.io/AI-Project/>，浏览器直接打开即可游玩，无需登录或下载。
 - 本地预览生产版：先运行 `node tools/build-web.cjs` 生成 `site/`，再运行 `node dev/serve.js 8124`，打开 <http://localhost:8124/site/index.html>。
 - 开发预览：`node dev/serve.js 8124`，打开 <http://localhost:8124/dev/index.html>。
-- 微信开发者工具：导入 `dist/CommanderSim`，项目类型选「小游戏」，填入小游戏 AppID 后编译。
+- 微信开发者工具：导入 `Source/`，项目类型选「小游戏」，填入小游戏 AppID 后编译。
+- 工作区已有的开发包和微信上传包位于 `Package/`。需要从源码另行生成上传目录时，运行 `node tools/package-release.cjs`，输出到 `dist/CommanderSim-release/`。
 - 上传/发布需要真实的小游戏 AppID；本地预览可用测试号。
 - 网站由 GitHub Actions 在推送 `main` 后自动构建并部署到 GitHub Pages；网站构建会移除测试关卡入口与调试对象。
 
@@ -88,13 +89,16 @@
 
 ```
 KuoBianZhanZheng/
-├─ game.js / game.json / project.config.json
-├─ js/            # 游戏代码
-├─ assets/        # 图片与音频
-├─ web/           # 网站外壳、生产版 wx 适配层与图标清单
+├─ Source/
+│  ├─ game.js / game.json / project.config.json
+│  ├─ js/         # 游戏代码
+│  ├─ assets/     # 图片与音频
+│  ├─ web/        # 正式版网页和 wx 适配
+│  └─ dev/        # 开发预览页面和 wx 适配
 ├─ site/          # 构建产物（不提交）
-├─ dev/           # 浏览器预览
+├─ dev/           # 预览服务和验证脚本
 ├─ tools/         # 构建、BGM/SFX 与发布工具
+├─ Package/       # 现有开发包与微信上传包
 └─ dist/          # 微信小游戏打包目录与 zip
 ```
 

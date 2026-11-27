@@ -3,7 +3,7 @@
 
 只用标准库合成 PCM，再用 ffmpeg 编码成 MP3。重新生成直接运行本文件即可：
     python tools/make-music.py
-输出 audio/march.mp3。BPB/配器/旋律都在下面的常量里，方便调整。
+输出 Source/audio/march.mp3。BPB/配器/旋律都在下面的常量里，方便调整。
 """
 import array
 import math
@@ -20,7 +20,7 @@ BARS = 8
 DUR = BARS * 4 * BEAT + 0.35
 N = int(SR * DUR)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AUDIO_DIR = os.path.join(ROOT, 'audio')
+AUDIO_DIR = os.path.join(ROOT, 'Source', 'audio')
 WAV = os.path.join(AUDIO_DIR, 'march.wav')
 MP3 = os.path.join(AUDIO_DIR, 'march.mp3')
 

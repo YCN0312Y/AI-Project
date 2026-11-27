@@ -2,7 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const root = path.resolve(__dirname, '..');
+const projectRoot = path.resolve(__dirname, '..');
+const root = path.join(projectRoot, 'Source');
 const entry = path.join(root, 'preview', 'bootstrap.js');
 const modules = new Map();
 
@@ -76,6 +77,6 @@ let html = indexHtml
   .replace('<script src="preview/wx-shim.js"></script>', `<script>\n${safe(shim)}\n</script>`)
   .replace('<script type="module" src="preview/bootstrap.js"></script>', `<script>\n${safe(bundled)}\n</script>`);
 
-const outPath = path.join(root, '指挥前线-手机版.html');
+const outPath = path.join(projectRoot, '指挥前线-手机版.html');
 fs.writeFileSync(outPath, html, 'utf8');
 console.log('Built:', outPath, Math.round(html.length / 1024) + 'KB');
